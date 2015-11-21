@@ -17,14 +17,11 @@ void diff(Mat& result, const Mat& frameA, const Mat& frameB, const range rangeVe
 }
 
 // Given a binary image, locate the connected components in the image
-// WARNING: The returned array must be manually destroyed after use.
-int** getConnectedComponents(const Mat& components) {
+Mat getConnectedComponents(const Mat& components) {
     // Make sure the matrix is of the correct type (uchar)
     assert(components.type() == CV_8UC1);
-    int** componentLabels = new int*[components.rows];
-    for(int i = 0; i < components.rows; i++) {
-        componentLabels[i] = new int[components.cols];
-    }
+
+    Mat componentLabels = Mat::zeros(components.size(), CV_32SC1);
 
     // The disjoint set structure that keeps track of component classes
     UF compClasses(DEFAULT_NUM_CC);
@@ -39,54 +36,54 @@ int** getConnectedComponents(const Mat& components) {
                     // On top boundary, so just check left
                     if(j-1 < 0) {
                         // This is the TL pixel, so set as new class
-                        componentLabels[i][j] = regCounter;
+                        componentLabels.at<int>(i, j) = regCounter;
                         regCounter++;
                     }
-                    else if(componentLabels[i][j-1] == -1) {
+                    else if(componentLabels.at<int>(i, j-1) == 0) {
                         // No left neighbor, so set pixel as new class
-                        componentLabels[i][j] = regCounter;
+                        componentLabels.at<int>(i, j) = regCounter;
                         regCounter++;
                     }
                     else {
                         // Assign pixel class to the same as left neighbor
-                        componentLabels[i][j] = componentLabels[i][j-1];
+                        componentLabels.at<int>(i, j) = componentLabels.at<int>(i, j-1);
                     }
                 }
                 else {
                     if(j-1 < 0) {
                         // On left boundary, so just check top
-                        if(componentLabels[i-1][j] == -1) {
+                        if(componentLabels.at<int>(i-1, j) == 0) {
                             // No top neighbor, so set pixel as new class
-                            componentLabels[i][j] = regCounter;
+                            componentLabels.at<int>(i, j) = regCounter;
                             regCounter++;
                         }
                         else {
                             // Assign pixel class to same as top neighbor
-                            componentLabels[i][j] = componentLabels[i-1][j];
+                            componentLabels.at<int>(i, j) = componentLabels.at<int>(i-1, j);
                         }
                     }
                     else {
                         // Normal case (get top and left neighbor and reassign classes if necessary)
-                        int topClass = componentLabels[i-1][j];
-                        int leftClass = componentLabels[i][j-1];
-                        if(topClass == -1 && leftClass == -1) {
+                        int topClass = componentLabels.at<int>(i-1, j);
+                        int leftClass = componentLabels.at<int>(i, j-1);
+                        if(topClass == 0 && leftClass == 0) {
                             // No neighbor exists, so set pixel as new class
-                            componentLabels[i][j] = regCounter;
+                            componentLabels.at<int>(i, j) = regCounter;
                             regCounter++;
                         }
-                        else if(topClass == -1 && leftClass != -1) {
+                        else if(topClass == 0 && leftClass != 0) {
                             // Only left neighbor exists, so copy its class
-                            componentLabels[i][j] = leftClass;
+                            componentLabels.at<int>(i, j) = leftClass;
                         }
-                        else if(topClass != -1 && leftClass == -1) {
+                        else if(topClass != 0 && leftClass == 0) {
                             // Only top neighbor exists, so copy its class
-                            componentLabels[i][j] = topClass;
+                            componentLabels.at<int>(i, j) = topClass;
                         }
                         else {
                             // Both neighbors exist
-                            int minNeighbor = std::min(componentLabels[i-1][j], componentLabels[i][j-1]);
-                            int maxNeighbor = std::max(componentLabels[i-1][j], componentLabels[i][j-1]);
-                            componentLabels[i][j] = minNeighbor;
+                            int minNeighbor = std::min(componentLabels.at<int>(i-1, j), componentLabels.at<int>(i, j-1));
+                            int maxNeighbor = std::max(componentLabels.at<int>(i-1, j), componentLabels.at<int>(i, j-1));
+                            componentLabels.at<int>(i, j) = minNeighbor;
                             // If we have differing neighbor values, merge them
                             if(minNeighbor != maxNeighbor) {
                                 compClasses.merge(minNeighbor, maxNeighbor);
@@ -97,14 +94,14 @@ int** getConnectedComponents(const Mat& components) {
             }
             else {
                 // The pixel is black, so do not give a component label
-                componentLabels[i][j] = -1;
+                componentLabels.at<int>(i, j) = 0;
             }
         }
     }
     // Unify the labels such that every pixel in a component has the same label
     for(int i=0; i < components.rows; i++) {
         for(int j=0; j < components.cols; j++) {
-            componentLabels[i][j] = compClasses.find(componentLabels[i][j]);
+            componentLabels.at<int>(i, j) = compClasses.find(componentLabels.at<int>(i, j));
         }
     }
     return componentLabels;

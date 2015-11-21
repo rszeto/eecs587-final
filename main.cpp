@@ -24,16 +24,13 @@ int main(int argc, char** argv) {
 	imshow("display", image3);
 	waitKey(0);
 
-	Mat components = Mat::zeros(image.rows, image.cols, CV_8UC1);
-	int** comps = getConnectedComponents(image3);
+	Mat components = getConnectedComponents(image3);
 	for(int i = 0; i < image.rows; i++) {
 		for(int j = 0; j < image.cols; j++) {
-			components.at<uchar>(i, j) = comps[i][j];
+			cout << (int)components.at<int>(i, j) << ",";
 		}
+		cout << endl;
 	}
-
-	imshow("display", components);
-	waitKey(0);
 	
 	return 0;
 }
