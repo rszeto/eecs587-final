@@ -1,8 +1,8 @@
 #include "opencvUtil.hpp"
 
 void diff(Mat& result, const Mat& frameA, const Mat& frameB, const Rect_<int> opRange, double threshold) {
-	for(int y = opRange.y; y <= opRange.y+opRange.height; y++) {
-		for(int x = opRange.x; x <= opRange.x+opRange.width; x++) {
+	for(int y = opRange.y; y < opRange.y+opRange.height; y++) {
+		for(int x = opRange.x; x < opRange.x+opRange.width; x++) {
 			Vec3b imagePix = frameA.at<Vec3b>(y, x);
 			Vec3b imagePix2 = frameB.at<Vec3b>(y, x); 
 			Vec3i diff(0, 0, 0);
