@@ -104,5 +104,4 @@ void getConnectedComponents(Mat& componentLabels, const Mat& components) {
             componentLabels.at<int>(i, j) = compClasses.find(componentLabels.at<int>(i, j));
         }
     }
-    // return componentLabels;
 }
