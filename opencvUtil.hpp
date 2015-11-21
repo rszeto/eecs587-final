@@ -16,7 +16,7 @@ typedef struct range {
 	int b; // End
 } range;
 
-void diff(Mat& result, const Mat& frameA, const Mat& frameB, const range rangeVert, const range rangeHoriz, double threshold);
-Mat getConnectedComponents(const Mat& components);
+void diff(Mat& result, const Mat& frameA, const Mat& frameB, const Rect_<int> opRange, double threshold);
+void getConnectedComponents(Mat& componentLabels, const Mat& components);
 
 #endif

@@ -1,27 +1,27 @@
 #include "opencvUtil.hpp"
 
-void diff(Mat& result, const Mat& frameA, const Mat& frameB, const range rangeVert, const range rangeHoriz, double threshold) {
-	for(int i = rangeVert.a; i <= rangeVert.b; i++) {
-		for(int j = rangeHoriz.a; j <= rangeHoriz.b; j++) {
-			Vec3b imagePix = frameA.at<Vec3b>(i, j);
-			Vec3b imagePix2 = frameB.at<Vec3b>(i, j); 
+void diff(Mat& result, const Mat& frameA, const Mat& frameB, const Rect_<int> opRange, double threshold) {
+	for(int y = opRange.y; y <= opRange.y+opRange.height; y++) {
+		for(int x = opRange.x; x <= opRange.x+opRange.width; x++) {
+			Vec3b imagePix = frameA.at<Vec3b>(y, x);
+			Vec3b imagePix2 = frameB.at<Vec3b>(y, x); 
 			Vec3i diff(0, 0, 0);
 			for(int c = 0; c < 3; c++) {
 				diff[c] = (int)(imagePix2[c] - imagePix[c]);
 			}
 			if(norm(diff, NORM_L2) > threshold) {
-				result.at<uchar>(i, j) = 255;
+				result.at<uchar>(y, x) = 255;
 			}
 		}
 	}
 }
 
 // Given a binary image, locate the connected components in the image
-Mat getConnectedComponents(const Mat& components) {
-    // Make sure the matrix is of the correct type (uchar)
+void getConnectedComponents(Mat& componentLabels, const Mat& components) {
+    // Make sure matrices are of the correct type
+    // componentLabels should be CV_32SC1, components should be CV_8UC1
+    assert(componentLabels.type() == CV_32SC1);
     assert(components.type() == CV_8UC1);
-
-    Mat componentLabels = Mat::zeros(components.size(), CV_32SC1);
 
     // The disjoint set structure that keeps track of component classes
     UF compClasses(DEFAULT_NUM_CC);
@@ -104,5 +104,5 @@ Mat getConnectedComponents(const Mat& components) {
             componentLabels.at<int>(i, j) = compClasses.find(componentLabels.at<int>(i, j));
         }
     }
-    return componentLabels;
+    // return componentLabels;
 }
