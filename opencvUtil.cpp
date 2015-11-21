@@ -17,7 +17,7 @@ void diff(Mat& result, const Mat& frameA, const Mat& frameB, const Rect_<int> op
 }
 
 // Given a binary image, locate the connected components in the image
-void getConnectedComponents(Mat& componentLabels, const Mat& components) {
+void getConnectedComponents(Mat& componentLabels, const Mat& components, const Rect_<int> opRange) {
     // Make sure matrices are of the correct type
     // componentLabels should be CV_32SC1, components should be CV_8UC1
     assert(componentLabels.type() == CV_32SC1);
@@ -27,8 +27,8 @@ void getConnectedComponents(Mat& componentLabels, const Mat& components) {
     UF compClasses(DEFAULT_NUM_CC);
     // Counter for the components in the image
     int regCounter = 1;
-    for(int i = 0; i < components.rows; i++) {
-        for(int j = 0; j < components.cols; j++) {
+    for(int i = opRange.y; i < opRange.y+opRange.height; i++) {
+        for(int j = opRange.x; j < opRange.x+opRange.width; j++) {
             // Set component class if mask is white at current pixel
             if(components.at<uchar>(i, j) == 255) {
                 // Check surrounding pixels
@@ -99,8 +99,8 @@ void getConnectedComponents(Mat& componentLabels, const Mat& components) {
         }
     }
     // Unify the labels such that every pixel in a component has the same label
-    for(int i=0; i < components.rows; i++) {
-        for(int j=0; j < components.cols; j++) {
+    for(int i = opRange.y; i < opRange.y+opRange.height; i++) {
+        for(int j = opRange.x; j < opRange.x+opRange.width; j++) {
             componentLabels.at<int>(i, j) = compClasses.find(componentLabels.at<int>(i, j));
         }
     }

@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
 	waitKey(0);
 
 	Mat components = Mat::zeros(diffs.size(), CV_32SC1);
-	getConnectedComponents(components, diffs);
+	getConnectedComponents(components, diffs, opRange);
 	for(int i = 0; i < image.rows; i++) {
 		for(int j = 0; j < image.cols; j++) {
 			cout << (int)components.at<int>(i, j) << ",";
