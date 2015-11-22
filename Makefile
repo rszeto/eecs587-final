@@ -1,4 +1,4 @@
-LIBS = opencv_core opencv_highgui
+LIBS = opencv_core opencv_highgui opencv_imgproc
 LIBPATHS = /usr/share
 
 LINKFLAGS = $(addprefix -l,$(LIBS))

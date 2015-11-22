@@ -105,3 +105,19 @@ void getConnectedComponents(Mat& componentLabels, const Mat& components, const R
         }
     }
 }
+
+void getContours(vector<vector<Point> >& contours, vector<Vec4i>& hierarchy, const Mat& image) {
+    Mat imageClone = image.clone();
+    findContours( imageClone, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE );
+}
+
+bool closeContours(const vector<Point>& contA, const vector<Point>& contB, double threshold) {
+    for(int i = 0; i < contA.size(); i++) {
+        for(int j = 0; j < contB.size(); j++) {
+            if(norm(contA[i]-contB[j]) < threshold) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
