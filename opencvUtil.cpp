@@ -121,3 +121,48 @@ bool closeContours(const vector<Point>& contA, const vector<Point>& contB, doubl
     }
     return false;
 }
+
+void initBorderOrder() {
+    borderSearchOrder.push_back(Point(1, 0));
+    borderSearchOrder.push_back(Point(1, -1));
+    borderSearchOrder.push_back(Point(0, -1));
+    borderSearchOrder.push_back(Point(-1, -1));
+    borderSearchOrder.push_back(Point(-1, 0));
+    borderSearchOrder.push_back(Point(-1, 1));
+    borderSearchOrder.push_back(Point(0, 1));
+    borderSearchOrder.push_back(Point(1, 1));
+}
+
+vector<Point> findBorder(Mat image, Point start) {
+    if(borderSearchOrder.empty()) {
+        initBorderOrder();
+    }
+    vector<Point> border;
+    border.push_back(start);
+    int dir = 7;
+    while(true) {
+        if(dir % 2 == 0)
+            dir = (dir+7) % 8;
+        else
+            dir = (dir+6) % 8;
+        for(int k = 0; k < 8; k++) {
+            int curDir = (dir+k) % 8;
+            Point nextPt = border.back() + borderSearchOrder[curDir];
+            if(image.at<uchar>(nextPt) == 255) {
+                border.push_back(nextPt);
+                dir = curDir;
+                break;
+            }
+        }
+        if(border.size() == 1) {
+            break;
+        }
+        if(border.size() > 2 && border.back() == border[1] && border[border.size()-2] == border[0]) {
+            // Remove last two since they match the first two
+            border.pop_back();
+            border.pop_back();
+            break;
+        }
+    }
+    return border;
+}

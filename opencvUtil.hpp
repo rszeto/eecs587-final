@@ -12,14 +12,12 @@
 using namespace std;
 using namespace cv;
 
-typedef struct range {
-	int a; // Start
-	int b; // End
-} range;
+static vector<Point> borderSearchOrder;
 
 void diff(Mat& result, const Mat& frameA, const Mat& frameB, const Rect_<int> opRange, double threshold);
 void getConnectedComponents(Mat& componentLabels, const Mat& components, const Rect_<int> opRange);
 void getContours(vector<vector<Point> >& contours, vector<Vec4i>& hierarchy, const Mat& image);
 bool closeContours(const vector<Point>& contA, const vector<Point>& contB, double threshold);
+vector<Point> findBorder(Mat image, Point start);
 
 #endif

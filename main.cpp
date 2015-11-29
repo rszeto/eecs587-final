@@ -195,13 +195,35 @@ void averageImage(char* imDir) {
 	delete[] total;
 }
 
+void findBorder() {
+	char* imLoc = "/home/szetor/shared/binary2.png";
+	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
+	Mat final = imread(imLoc, CV_LOAD_IMAGE_COLOR);
+	Scalar green = Scalar(0, 255, 0);
 
+	vector<vector<Point> > contours;
+	vector<Point> starts;
+	starts.push_back(Point(23, 20));
+	starts.push_back(Point(74, 27));
+	starts.push_back(Point(118, 88));
+	
+	for(int i = 0; i < starts.size(); i++) {
+		contours.push_back(findBorder(image, starts[i]));
+	}
+	for(int i = 0; i < starts.size(); i++) {
+		drawContours(final, contours, i, green);
+	}
+	namedWindow("display", CV_WINDOW_KEEPRATIO);
+	imshow("display", final);
+	waitKey(0);
+}
 
 int main(int argc, char** argv) {
 	// animateDiffs(argv[1]);
 	// findBlobs();
-	groupContours(argv[1]);
+	// groupContours(argv[1]);
 	// averageImage(argv[1]);
+	findBorder();
 
 	return 0;
 }
