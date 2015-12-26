@@ -242,12 +242,48 @@ void findBorder2() {
 	}
 }
 
+int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*& imLoc) {
+	char optChar;
+	while((optChar = getopt(argc, argv, "dvi:")) != -1) {
+		switch(optChar) {
+			case 'd':
+				displayImages = true;
+				break;
+			case 'v':
+				verbose = true;
+				break;
+			case 'i':
+				imLoc = optarg;
+				break;
+			case '?':
+				if(optopt == 'i')
+					cerr << "Image not specified with flag -i" << endl;
+				else
+					cerr << "Unknown option " << optopt << endl;
+				return 1;
+			default:
+				abort();
+		}
+	}
+	if(imLoc == NULL) {
+		cerr << "Image argument required" << endl;
+		return 1;
+	}
+	return 0;
+}
+
 int mpiMain(int argc, char** argv) {
+	bool displayImages = false;
+	bool verbose = false;
+	char* imLoc = NULL;
+	int optsRet = handleOpts(argc, argv, displayImages, verbose, imLoc);
+	if(optsRet != 0) {
+		return optsRet;
+	}
+
 	MPI_Init(&argc, &argv);
 
 	// Load image
-	// char* imLoc = "/home/szetor/shared/binary4.png";
-	char* imLoc = argv[1];
 	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
 
 	// Get number of procs
@@ -282,7 +318,7 @@ int mpiMain(int argc, char** argv) {
 	Rect localROI(rCol*normBlockWidth, rRow*normBlockHeight, localBlockWidth+4, localBlockHeight+4);
 	Mat localImage = paddedImage(localROI);
 
-	if(localImage.rows < 15 && localImage.cols < 15) {
+	if(verbose && localImage.rows < 15 && localImage.cols < 15) {
 		for(int r = 0; r < p; r++) {
 			if(rank == r) {
 				cout << localImage << endl;
@@ -334,7 +370,7 @@ int mpiMain(int argc, char** argv) {
 		pointToProc.insert(pointToProc.end(), numLocalPointsArr[i], i);
 	}
 	totalNumPoints = pointToProc.size();
-	if(rank == 0) {
+	if(verbose && rank == 0) {
 		cout << "Num points: " << totalNumPoints << endl;
 		cout << "Num pairs: " << totalNumPoints*(totalNumPoints-1)/2 << endl;
 	}
@@ -395,9 +431,9 @@ int mpiMain(int argc, char** argv) {
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
 	// for(int loopVar = 0; loopVar < 10; loopVar++) {
 
-		// if(rank == 0 && loopVar % 200 == 0) {
-		// 	cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2 << endl;
-		// }
+		if(verbose && rank == 0 && loopVar % 200 == 0) {
+			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2 << endl;
+		}
 
 		// Find the smallest distance
 		double minDist;
@@ -476,7 +512,7 @@ int mpiMain(int argc, char** argv) {
 	if(rank == 0) {
 		// Stop timing
 		double endTime = MPI_Wtime();
-		cout << "Distance calculation time (s): " << midTime-startTime << endl;
+		// cout << "Distance calculation time (s): " << midTime-startTime << endl;
 		cout << "Total time (s): " << endTime-startTime << endl;
 
 		// Color the clusters
@@ -495,11 +531,13 @@ int mpiMain(int argc, char** argv) {
 			final.at<Vec3b>(point.x, point.y) = color;
 		}
 
-		namedWindow("final", CV_WINDOW_KEEPRATIO);
-		imshow("final", image);
-		waitKey(0);
-		imshow("final", final);
-		waitKey(0);
+		if(displayImages) {
+			namedWindow("final", CV_WINDOW_KEEPRATIO);
+			imshow("final", image);
+			waitKey(0);
+			imshow("final", final);
+			waitKey(0);
+		}
 	}
 
 	MPI_Finalize();
