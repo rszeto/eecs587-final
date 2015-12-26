@@ -108,7 +108,7 @@ void getConnectedComponents(Mat& componentLabels, const Mat& components, const R
 
 void getContours(vector<vector<Point> >& contours, vector<Vec4i>& hierarchy, const Mat& image) {
     Mat imageClone = image.clone();
-    findContours( imageClone, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE );
+    findContours( imageClone, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_NONE );
 }
 
 bool closeContours(const vector<Point>& contA, const vector<Point>& contB, double threshold) {
@@ -165,4 +165,50 @@ vector<Point> findBorder(Mat image, Point start) {
         }
     }
     return border;
+}
+
+vector<Point> findBorder2(Mat image, Point start, int goodLabel) {
+    assert(image.type() == CV_32SC1);
+    if(borderSearchOrder.empty()) {
+        initBorderOrder();
+    }
+    vector<Point> border;
+    border.push_back(start);
+    int dir = 7;
+    while(true) {
+        if(dir % 2 == 0)
+            dir = (dir+7) % 8;
+        else
+            dir = (dir+6) % 8;
+        for(int k = 0; k < 8; k++) {
+            int curDir = (dir+k) % 8;
+            Point nextPt = border.back() + borderSearchOrder[curDir];
+            if(image.at<int>(nextPt) == goodLabel) {
+                border.push_back(nextPt);
+                dir = curDir;
+                break;
+            }
+        }
+        if(border.size() == 1) {
+            break;
+        }
+        if(border.size() > 2 && border.back() == border[1] && border[border.size()-2] == border[0]) {
+            // Remove last two since they match the first two
+            border.pop_back();
+            border.pop_back();
+            break;
+        }
+    }
+    return border;
+}
+
+void drawContour(Mat image, vector<Point> contour, Scalar color) {
+    for(int i = 0; i < contour.size(); i++) {
+        for(int c = 0; c < 3; c++)
+        image.at<Vec3b>(contour[i])[c] = color[c];
+    }
+}
+
+simplePoint simplifyPoint(Point2d p) {
+    return {p.x, p.y};
 }

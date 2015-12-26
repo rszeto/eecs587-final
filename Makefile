@@ -4,14 +4,16 @@ LIBPATHS = /usr/share
 LINKFLAGS = $(addprefix -l,$(LIBS))
 LIBPATHFLAGS = $(addprefix -L,$(LIBPATHS))
 
+CC = mpiCC
+
 all: main.cpp opencvUtil.o uf.o
-	g++ -o main $^ $(LINKFLAGS) $(LIBPATHFLAGS)
+	$(CC) -o main $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
 opencvUtil.o: opencvUtil.hpp opencvUtil.cpp
-	g++ -c -o opencvUtil.o opencvUtil.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
+	$(CC) -c -o opencvUtil.o opencvUtil.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
 
 uf.o: uf.hpp uf.cpp
-	g++ -c -o uf.o uf.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
+	$(CC) -c -o uf.o uf.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
 
 clean:
 	rm main *.o

@@ -1,3 +1,4 @@
+#include <mpi.h>
 #include <iostream>
 #include <cstdio>
 #include <map>
@@ -27,7 +28,8 @@ int getNumFrames(char* imDir) {
 }
 
 void animateDiffs(char* imDir) {
-	int totalNumFrames = getNumFrames(imDir);
+	// int totalNumFrames = getNumFrames(imDir);
+	int totalNumFrames = 5;
 	int threshold = 75;
 
 	char buffer[256];
@@ -61,25 +63,32 @@ void animateDiffs(char* imDir) {
 
 void findBlobs() {
 	int threshold = 75;
-	char* imLoc = "/home/szetor/shared/legendary/image_0001.png";
-	char* imLoc2 = "/home/szetor/shared/legendary/image_0002.png";
-	Mat image, image2;
-	image = imread(imLoc, CV_LOAD_IMAGE_COLOR);
-	image2 = imread(imLoc2, CV_LOAD_IMAGE_COLOR);
+	char* blobsLoc = "/home/szetor/shared/data/MOT/AVG-TownCentre/diffs/image_0001.png";
+	Mat blobs = imread(blobsLoc, CV_LOAD_IMAGE_GRAYSCALE);
+	Rect_<int> opRange(0, 0, blobs.cols, blobs.rows);
 
-	Rect_<int> opRange(0, 0, image.cols, image.rows);
-	Mat diffs = Mat::zeros(image.rows, image.cols, CV_8UC1);
-	diff(diffs, image, image2, opRange, threshold);
-	imwrite("output/diffs.png", diffs);
+	Mat components = Mat::zeros(blobs.size(), CV_32SC1);
+	getConnectedComponents(components, blobs, opRange);
 
-	Mat components = Mat::zeros(diffs.size(), CV_32SC1);
-	getConnectedComponents(components, diffs, opRange);
-	for(int i = 0; i < image.rows; i++) {
-		for(int j = 0; j < image.cols; j++) {
-			cout << (int)components.at<int>(i, j) << ",";
+	double minComp, maxComp;
+	minMaxLoc(components, &minComp, &maxComp);
+	vector<Scalar> colors;
+	colors.push_back(Scalar(0, 0, 0));
+	for(int i = 1; i <= maxComp; i++)
+		colors.push_back(Scalar(rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255)));
+
+	Mat final = Mat::zeros(blobs.size(), CV_8UC3);
+	for(int y = 0; y < blobs.rows; y++) {
+		for(int x = 0; x < blobs.cols; x++) {
+			for(int c = 0; c < 3; c++) {
+				final.at<Vec3b>(y, x)[c] = colors[(int)components.at<int>(y, x)][c];
+			}
 		}
-		cout << endl;
+		// cout << endl;
 	}
+	namedWindow("final", CV_WINDOW_KEEPRATIO);
+	imshow("final", final);
+	waitKey(0);
 }
 
 void groupContours(char* imDir) {
@@ -200,6 +209,8 @@ void findBorder() {
 	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
 	Mat final = imread(imLoc, CV_LOAD_IMAGE_COLOR);
 	Scalar green = Scalar(0, 255, 0);
+	Scalar blue = Scalar(255, 0, 0);
+	Scalar red = Scalar(0, 0, 255);
 
 	vector<vector<Point> > contours;
 	vector<Point> starts;
@@ -209,21 +220,291 @@ void findBorder() {
 	
 	for(int i = 0; i < starts.size(); i++) {
 		contours.push_back(findBorder(image, starts[i]));
-	}
-	for(int i = 0; i < starts.size(); i++) {
-		drawContours(final, contours, i, green);
+		vector<Point> contour = findBorder(image, starts[i]);
+		drawContour(final, contour, red);
 	}
 	namedWindow("display", CV_WINDOW_KEEPRATIO);
 	imshow("display", final);
 	waitKey(0);
 }
 
-int main(int argc, char** argv) {
-	// animateDiffs(argv[1]);
-	// findBlobs();
-	// groupContours(argv[1]);
-	// averageImage(argv[1]);
-	findBorder();
+void findBorder2() {
+	Mat C = (Mat_<int>(5,5) << 0,0,0,0,0,0,1,2,1,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,0);
+	vector<Point> border = findBorder2(C, Point(1, 1), 1);
+	for(int i = 0; i < border.size(); i++) {
+		C.at<int>(border[i]) = 9;
+	}
+	for(int i = 0; i < C.rows; i++) {
+		for(int j = 0; j < C.cols; j++) {
+			cout << C.at<int>(i, j) << " ";
+		}
+		cout << endl;
+	}
+}
+
+int mpiMain(int argc, char** argv) {
+	MPI_Init(&argc, &argv);
+
+	// Load image
+	char* imLoc = "/home/szetor/shared/binary4.png";
+	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
+
+	// Get number of procs
+	int p;
+	MPI_Comm_size(MPI_COMM_WORLD, &p);
+	// Get square root of number of procs
+	int sqP = sqrt(p);
+
+	// Get rank
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	// Get row and column of this proc
+	int rRow = rank / sqP;
+	int rCol = rank % sqP;
+
+	// Get width and height of image on most procs
+	int normBlockWidth = image.cols / sqP;
+	int normBlockHeight = image.rows / sqP;
+	int localBlockWidth = normBlockWidth;
+	int localBlockHeight = normBlockHeight;
+	// Adjust width or height if this is the last proc
+	if(rRow == sqP-1)
+		localBlockHeight = image.rows - (sqP-1)*normBlockHeight;
+	if(rCol == sqP-1)
+		localBlockWidth = image.cols - (sqP-1)*normBlockWidth;
+
+
+	// Pad the border of the total image so contours can be found on whole image
+	Mat paddedImage;
+	copyMakeBorder(image, paddedImage, 2, 2, 2, 2, BORDER_CONSTANT, 0);
+	// Extract local region plus context of width 2
+	Rect localROI(rCol*normBlockWidth, rRow*normBlockHeight, localBlockWidth+4, localBlockHeight+4);
+	Mat localImage = paddedImage(localROI);
+
+	if(localImage.rows < 15 && localImage.cols < 15) {
+		for(int r = 0; r < p; r++) {
+			if(rank == r) {
+				cout << localImage << endl;
+				cout << "=====" << rank << endl;
+			}
+			MPI_Barrier(MPI_COMM_WORLD);
+		}
+	}
+
+	// Get contours of local image
+	vector<vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+	findContours(localImage, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_NONE);
+
+	// Populate the contour points to use for clustering
+	vector<Point2f> localPoints;
+	// Correct offset of local region
+	Point2f offset(rRow*normBlockHeight-2, rCol*normBlockWidth-2);
+	for(int i = 0; i < contours.size(); i++) {
+		for(int j = 0; j < contours[i].size(); j++) {
+			Point2d pt = contours[i][j];
+			if(pt.x < 2 || pt.x > localBlockWidth+1 || pt.y < 2 || pt.y > localBlockHeight+1)
+				continue;
+			localPoints.push_back(Point2f(pt.y, pt.x) + offset);
+			// TODO: Keep inner contour points in same cluster as parent
+		}
+	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	double startTime;
+	if(rank == 0) {
+		startTime = MPI_Wtime();
+	}
+
+	// How many points this proc owns
+	int numLocalPoints = localPoints.size();
+	// Array keeping track of how many points each proc owns
+	int numLocalPointsArr[p];
+	// Array keeping track of how many points are owned by procs before this one
+	int cumNumLocalPointsArr[p];
+	// Array keeping track of which proc each point is on
+	vector<int> pointToProc;
+	// Total number of points
+	int totalNumPoints = 0;
+	// Populate above vars
+	MPI_Allgather(&numLocalPoints, 1, MPI_INT, numLocalPointsArr, 1, MPI_INT, MPI_COMM_WORLD);
+	for(int i = 0; i < p; i++) {
+		cumNumLocalPointsArr[i] = (i == 0 ? 0 : cumNumLocalPointsArr[i-1] + numLocalPointsArr[i-1]);
+		pointToProc.insert(pointToProc.end(), numLocalPointsArr[i], i);
+	}
+	totalNumPoints = pointToProc.size();
+	if(rank == 0) {
+		cout << "Num points: " << totalNumPoints << endl;
+		cout << "Num pairs: " << totalNumPoints*(totalNumPoints-1)/2 << endl;
+	}
+
+	// Set cluster indexes for local points
+	int clusterIndexes[numLocalPoints];
+	for(int i = 0; i < numLocalPoints; i++) {
+		int globalI = cumNumLocalPointsArr[rank] + i;
+		clusterIndexes[i] = globalI;
+	}
+
+	// Init send to lower ranked procs
+	double localPointsArr[2*numLocalPoints];
+	for(int i = 0; i < numLocalPoints; i++) {
+		localPointsArr[2*i] = localPoints[i].x;
+		localPointsArr[2*i+1] = localPoints[i].y;
+	}
+	MPI_Request sendReqs[rank];
+	for(int i = 0; i < rank; i++) {
+		MPI_Isend(localPointsArr, 2*numLocalPoints, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &sendReqs[i]);
+	}
+
+	// Calculate distances between points that this proc owns
+	Mat dists = Mat(numLocalPoints, totalNumPoints, CV_64F, numeric_limits<double>::max());
+	for(int i = 0; i < numLocalPoints; i++) {
+		int globalI = cumNumLocalPointsArr[rank] + i;
+		for(int j = i+1; j < numLocalPoints; j++) {
+			int globalJ = cumNumLocalPointsArr[rank] + j;
+			dists.at<double>(i, globalJ) = norm(localPoints[i]-localPoints[j]);
+		}
+	}
+
+	// Request from higher ranked procs
+	for(int otherRank = rank+1; otherRank < p; otherRank++) {
+		double otherPointsArr[2*numLocalPointsArr[otherRank]];
+		MPI_Recv(otherPointsArr, 2*numLocalPointsArr[otherRank], MPI_DOUBLE, otherRank, 0, MPI_COMM_WORLD, NULL);
+		// Reconstruct other points
+		vector<Point2f> otherPoints;
+		for(int i = 0; i < numLocalPointsArr[otherRank]; i++) {
+			otherPoints.push_back(Point2f(otherPointsArr[2*i], otherPointsArr[2*i+1]));
+		}
+		// Calculate distance of other points from points on this proc
+		for(int i = 0; i < numLocalPoints; i++) {
+			for(int j = 0; j < numLocalPointsArr[otherRank]; j++) {
+				int globalJ = cumNumLocalPointsArr[otherRank] + j;
+				dists.at<double>(i, globalJ) = norm(localPoints[i]-otherPoints[j]);
+			}
+		}
+	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	double midTime;
+	if(rank == 0) {
+		midTime = MPI_Wtime();
+	}
+
+	double thresh = 3.0;
+	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
+	// for(int loopVar = 0; loopVar < 10; loopVar++) {
+
+		// if(rank == 0 && loopVar % 200 == 0) {
+		// 	cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2 << endl;
+		// }
+		// Find the smallest distance
+		double minDist;
+		Point minLoc;
+		// int minLoc[2];
+		minMaxLoc(dists, &minDist, NULL, &minLoc);
+		if(minLoc == Point(-1, -1)) {
+			minDist = numeric_limits<double>::max();
+		}
+		// Convert location to row-column order
+		minLoc = Point(minLoc.y, minLoc.x);
+
+		struct {
+			double val;
+			int rank;
+		} in, out;
+		in.val = minDist;
+		in.rank = rank;
+		MPI_Allreduce(&in, &out, 1, MPI_DOUBLE_INT, MPI_MINLOC, MPI_COMM_WORLD);
+		// Quit if min value is too high
+		if(out.val > thresh) {
+			break;
+		}
+
+		if(rank == out.rank) {
+			dists.at<double>(minLoc.x, minLoc.y) = numeric_limits<double>::max();
+		}
+		
+		// Get global position of minimum
+		int globalPos[2] = {cumNumLocalPointsArr[rank] + minLoc.x, minLoc.y};
+		// int globalPos[2] = {cumNumLocalPointsArr[rank] + minLoc[0], minLoc[1]};
+		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_WORLD);
+
+		// Get which procs own the points whose clusters should be updated
+		int rankA = pointToProc[globalPos[0]];
+		int rankB = pointToProc[globalPos[1]];
+		int clusterA, clusterB;
+		// Get the cluster of the first point
+		if(rank == rankA) {
+			clusterA = clusterIndexes[globalPos[0]-cumNumLocalPointsArr[rank]];
+		}
+		MPI_Bcast(&clusterA, 1, MPI_INT, rankA, MPI_COMM_WORLD);
+		// Get the cluster of the second point
+		if(rank == rankB) {
+			clusterB = clusterIndexes[globalPos[1]-cumNumLocalPointsArr[rank]];
+		}
+		MPI_Bcast(&clusterB, 1, MPI_INT, rankB, MPI_COMM_WORLD);
+		// If the points were in different clusters, update
+		if(clusterA != clusterB) {
+			// Update cluster indexes
+			for(int i = 0; i < numLocalPoints; i++) {
+				if(clusterIndexes[i] == clusterA || clusterIndexes[i] == clusterB) {
+					clusterIndexes[i] = min(clusterA, clusterB);
+				}
+			}
+		}
+	}
+
+	// Gather cluster indexes from all procs
+	int allClusterIndexes[totalNumPoints];
+	MPI_Gatherv(clusterIndexes, numLocalPoints, MPI_INT, allClusterIndexes, numLocalPointsArr, cumNumLocalPointsArr, MPI_INT, 0, MPI_COMM_WORLD);
+	// Gather points
+	double allPointsArr[2*totalNumPoints];
+	int dNumLocalPointsArr[p], dCumNumLocalPointsArr[p];
+	for(int i = 0; i < p; i++) {
+		dNumLocalPointsArr[i] = 2*numLocalPointsArr[i];
+		dCumNumLocalPointsArr[i] = 2*cumNumLocalPointsArr[i];
+	}
+	MPI_Gatherv(localPointsArr, 2*numLocalPoints, MPI_DOUBLE, allPointsArr, dNumLocalPointsArr, dCumNumLocalPointsArr, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	// Convert allPointsArr to points vector
+	vector<Point2f> allPoints;
+	for(int i = 0; i < totalNumPoints; i++) {
+		allPoints.push_back(Point2f(allPointsArr[2*i], allPointsArr[2*i+1]));
+	}
+
+	if(rank == 0) {
+		// Stop timing
+		double endTime = MPI_Wtime();
+		cout << "Distance calculation time (s): " << midTime-startTime << endl;
+		cout << "Total time (s): " << endTime-startTime << endl;
+
+		// Color the clusters
+		// Mat final = Mat::zeros(image.size(), CV_8UC3);
+		Mat final;
+		cvtColor(image, final, CV_GRAY2RGB);
+		map<int, Vec3b> clusterColors;
+		for(int i = 0; i < totalNumPoints; i++) {
+			int clusterIndex = allClusterIndexes[i];
+			Point2f point = allPoints[i];
+			if(clusterColors.count(clusterIndex) == 0) {
+				Vec3b color(rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255));
+				clusterColors.insert(pair<int, Vec3b>(clusterIndex, color));
+			}
+			Vec3b color = clusterColors[clusterIndex];
+			final.at<Vec3b>(point.x, point.y) = color;
+		}
+
+		namedWindow("final", CV_WINDOW_KEEPRATIO);
+		imshow("final", image);
+		waitKey(0);
+		imshow("final", final);
+		waitKey(0);
+	}
+
+	MPI_Finalize();
 
 	return 0;
+}
+
+int main(int argc, char** argv) {
+	return mpiMain(argc, argv);
 }
