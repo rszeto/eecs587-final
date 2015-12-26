@@ -422,12 +422,6 @@ int mpiMain(int argc, char** argv) {
 		}
 	}
 
-	MPI_Barrier(MPI_COMM_WORLD);
-	double midTime;
-	if(rank == 0) {
-		midTime = MPI_Wtime();
-	}
-
 	double thresh = 3.0;
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
 	// for(int loopVar = 0; loopVar < 10; loopVar++) {
@@ -439,7 +433,6 @@ int mpiMain(int argc, char** argv) {
 		// Find the smallest distance
 		double minDist;
 		Point minLoc;
-		// int minLoc[2];
 		minMaxLoc(dists, &minDist, NULL, &minLoc);
 		if(minLoc == Point(-1, -1)) {
 			minDist = numeric_limits<double>::max();
@@ -465,7 +458,6 @@ int mpiMain(int argc, char** argv) {
 		
 		// Get global position of minimum
 		int globalPos[2] = {cumNumLocalPointsArr[rank] + minLoc.x, minLoc.y};
-		// int globalPos[2] = {cumNumLocalPointsArr[rank] + minLoc[0], minLoc[1]};
 		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_WORLD);
 
 		// Get which procs own the points whose clusters should be updated
@@ -513,11 +505,9 @@ int mpiMain(int argc, char** argv) {
 	if(rank == 0) {
 		// Stop timing
 		double endTime = MPI_Wtime();
-		// cout << "Distance calculation time (s): " << midTime-startTime << endl;
 		cout << "Total time (s): " << endTime-startTime << endl;
 
 		// Color the clusters
-		// Mat final = Mat::zeros(image.size(), CV_8UC3);
 		Mat final;
 		cvtColor(image, final, CV_GRAY2RGB);
 		map<int, Vec3b> clusterColors;
