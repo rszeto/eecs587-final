@@ -336,15 +336,20 @@ int mpiMain(int argc, char** argv) {
 
 	// Populate the contour points to use for clustering
 	vector<Point2f> localPoints;
+	vector<int> clusterIndexes;
 	// Correct offset of local region
 	Point2f offset(rRow*normBlockHeight-2, rCol*normBlockWidth-2);
+	char buf[32];
 	for(int i = 0; i < contours.size(); i++) {
 		for(int j = 0; j < contours[i].size(); j++) {
 			Point2d pt = contours[i][j];
 			if(pt.x < 2 || pt.x > localBlockWidth+1 || pt.y < 2 || pt.y > localBlockHeight+1)
 				continue;
 			localPoints.push_back(Point2f(pt.y, pt.x) + offset);
-			// TODO: Keep inner contour points in same cluster as parent
+			int baseClusterNum = hierarchy[i][3] == -1 ? i : hierarchy[i][3];
+			// int baseClusterNum = localPoints.size()-1;
+			sprintf(buf, "1%02d%d", rank, baseClusterNum);
+			clusterIndexes.push_back(atoi(buf));
 		}
 	}
 
@@ -374,13 +379,6 @@ int mpiMain(int argc, char** argv) {
 	if(verbose && rank == 0) {
 		cout << "Num points: " << totalNumPoints << endl;
 		cout << "Num pairs: " << totalNumPoints*(totalNumPoints-1)/2 << endl;
-	}
-
-	// Set cluster indexes for local points
-	int clusterIndexes[numLocalPoints];
-	for(int i = 0; i < numLocalPoints; i++) {
-		int globalI = cumNumLocalPointsArr[rank] + i;
-		clusterIndexes[i] = globalI;
 	}
 
 	// Init send to lower ranked procs
@@ -487,7 +485,11 @@ int mpiMain(int argc, char** argv) {
 
 	// Gather cluster indexes from all procs
 	int allClusterIndexes[totalNumPoints];
-	MPI_Gatherv(clusterIndexes, numLocalPoints, MPI_INT, allClusterIndexes, numLocalPointsArr, cumNumLocalPointsArr, MPI_INT, 0, MPI_COMM_WORLD);
+	// Convert local cluster indexes to array
+	int clusterIndexesArr[numLocalPoints];
+	for(int i = 0; i < numLocalPoints; i++)
+		clusterIndexesArr[i] = clusterIndexes[i];
+	MPI_Gatherv(clusterIndexesArr, numLocalPoints, MPI_INT, allClusterIndexes, numLocalPointsArr, cumNumLocalPointsArr, MPI_INT, 0, MPI_COMM_WORLD);
 	// Gather points
 	double allPointsArr[2*totalNumPoints];
 	int dNumLocalPointsArr[p], dCumNumLocalPointsArr[p];
