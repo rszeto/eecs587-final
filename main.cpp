@@ -246,7 +246,8 @@ int mpiMain(int argc, char** argv) {
 	MPI_Init(&argc, &argv);
 
 	// Load image
-	char* imLoc = "/home/szetor/shared/binary4.png";
+	// char* imLoc = "/home/szetor/shared/binary4.png";
+	char* imLoc = argv[1];
 	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
 
 	// Get number of procs
@@ -397,6 +398,7 @@ int mpiMain(int argc, char** argv) {
 		// if(rank == 0 && loopVar % 200 == 0) {
 		// 	cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2 << endl;
 		// }
+
 		// Find the smallest distance
 		double minDist;
 		Point minLoc;
