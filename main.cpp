@@ -311,6 +311,7 @@ int mpiMain(int argc, char** argv) {
 	if(rCol == sqP-1)
 		localBlockWidth = image.cols - (sqP-1)*normBlockWidth;
 
+
 	// Pad the border of the total image so contours can be found on whole image
 	Mat paddedImage;
 	copyMakeBorder(image, paddedImage, 2, 2, 2, 2, BORDER_CONSTANT, 0);
@@ -334,15 +335,15 @@ int mpiMain(int argc, char** argv) {
 	findContours(localImage, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_NONE);
 
 	// Populate the contour points to use for clustering
-	vector<Point> localPoints;
+	vector<Point2f> localPoints;
 	// Correct offset of local region
-	Point offset(rRow*normBlockHeight-2, rCol*normBlockWidth-2);
+	Point2f offset(rRow*normBlockHeight-2, rCol*normBlockWidth-2);
 	for(int i = 0; i < contours.size(); i++) {
 		for(int j = 0; j < contours[i].size(); j++) {
 			Point2d pt = contours[i][j];
 			if(pt.x < 2 || pt.x > localBlockWidth+1 || pt.y < 2 || pt.y > localBlockHeight+1)
 				continue;
-			localPoints.push_back(Point(pt.y, pt.x) + offset);
+			localPoints.push_back(Point2f(pt.y, pt.x) + offset);
 		}
 	}
 
@@ -382,46 +383,47 @@ int mpiMain(int argc, char** argv) {
 	}
 
 	// Init send to lower ranked procs
-	float localPointsArr[2*numLocalPoints];
+	double localPointsArr[2*numLocalPoints];
 	for(int i = 0; i < numLocalPoints; i++) {
 		localPointsArr[2*i] = localPoints[i].x;
 		localPointsArr[2*i+1] = localPoints[i].y;
 	}
 	MPI_Request sendReqs[rank];
 	for(int i = 0; i < rank; i++) {
-		MPI_Isend(localPointsArr, 2*numLocalPoints, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &sendReqs[i]);
+		MPI_Isend(localPointsArr, 2*numLocalPoints, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &sendReqs[i]);
 	}
 
 	// Calculate distances between points that this proc owns
-	Mat dists = Mat(numLocalPoints, totalNumPoints, CV_32F, numeric_limits<float>::max());
+	Mat dists = Mat(numLocalPoints, totalNumPoints, CV_64F, numeric_limits<double>::max());
 	for(int i = 0; i < numLocalPoints; i++) {
 		int globalI = cumNumLocalPointsArr[rank] + i;
 		for(int j = i+1; j < numLocalPoints; j++) {
 			int globalJ = cumNumLocalPointsArr[rank] + j;
-			dists.at<float>(i, globalJ) = norm(localPoints[i]-localPoints[j]);
+			dists.at<double>(i, globalJ) = norm(localPoints[i]-localPoints[j]);
 		}
 	}
 
 	// Request from higher ranked procs
 	for(int otherRank = rank+1; otherRank < p; otherRank++) {
-		float otherPointsArr[2*numLocalPointsArr[otherRank]];
-		MPI_Recv(otherPointsArr, 2*numLocalPointsArr[otherRank], MPI_FLOAT, otherRank, 0, MPI_COMM_WORLD, NULL);
+		double otherPointsArr[2*numLocalPointsArr[otherRank]];
+		MPI_Recv(otherPointsArr, 2*numLocalPointsArr[otherRank], MPI_DOUBLE, otherRank, 0, MPI_COMM_WORLD, NULL);
 		// Reconstruct other points
-		vector<Point> otherPoints;
+		vector<Point2f> otherPoints;
 		for(int i = 0; i < numLocalPointsArr[otherRank]; i++) {
-			otherPoints.push_back(Point(otherPointsArr[2*i], otherPointsArr[2*i+1]));
+			otherPoints.push_back(Point2f(otherPointsArr[2*i], otherPointsArr[2*i+1]));
 		}
 		// Calculate distance of other points from points on this proc
 		for(int i = 0; i < numLocalPoints; i++) {
 			for(int j = 0; j < numLocalPointsArr[otherRank]; j++) {
 				int globalJ = cumNumLocalPointsArr[otherRank] + j;
-				dists.at<float>(i, globalJ) = norm(localPoints[i]-otherPoints[j]);
+				dists.at<double>(i, globalJ) = norm(localPoints[i]-otherPoints[j]);
 			}
 		}
 	}
 
 	double thresh = 3.0;
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
+	// for(int loopVar = 0; loopVar < 10; loopVar++) {
 
 		if(verbose && rank == 0 && loopVar % 200 == 0) {
 			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2 << endl;
@@ -431,29 +433,26 @@ int mpiMain(int argc, char** argv) {
 		double minDist;
 		Point minLoc;
 		minMaxLoc(dists, &minDist, NULL, &minLoc);
-		// Cast minDist to float
-		float minDistF = (float)minDist;
-		// Handle case where no valid value (ie. not MAX_VALUE) was found
 		if(minLoc == Point(-1, -1)) {
-			minDistF = numeric_limits<float>::max();
+			minDist = numeric_limits<double>::max();
 		}
 		// Convert location to row-column order
 		minLoc = Point(minLoc.y, minLoc.x);
 
 		struct {
-			float val;
+			double val;
 			int rank;
 		} in, out;
-		in.val = minDistF;
+		in.val = minDist;
 		in.rank = rank;
-		MPI_Allreduce(&in, &out, 1, MPI_FLOAT_INT, MPI_MINLOC, MPI_COMM_WORLD);
+		MPI_Allreduce(&in, &out, 1, MPI_DOUBLE_INT, MPI_MINLOC, MPI_COMM_WORLD);
 		// Quit if min value is too high
 		if(out.val > thresh) {
 			break;
 		}
 
 		if(rank == out.rank) {
-			dists.at<float>(minLoc.x, minLoc.y) = numeric_limits<float>::max();
+			dists.at<double>(minLoc.x, minLoc.y) = numeric_limits<double>::max();
 		}
 		
 		// Get global position of minimum
@@ -489,17 +488,17 @@ int mpiMain(int argc, char** argv) {
 	int allClusterIndexes[totalNumPoints];
 	MPI_Gatherv(clusterIndexes, numLocalPoints, MPI_INT, allClusterIndexes, numLocalPointsArr, cumNumLocalPointsArr, MPI_INT, 0, MPI_COMM_WORLD);
 	// Gather points
-	float allPointsArr[2*totalNumPoints];
+	double allPointsArr[2*totalNumPoints];
 	int dNumLocalPointsArr[p], dCumNumLocalPointsArr[p];
 	for(int i = 0; i < p; i++) {
 		dNumLocalPointsArr[i] = 2*numLocalPointsArr[i];
 		dCumNumLocalPointsArr[i] = 2*cumNumLocalPointsArr[i];
 	}
-	MPI_Gatherv(localPointsArr, 2*numLocalPoints, MPI_FLOAT, allPointsArr, dNumLocalPointsArr, dCumNumLocalPointsArr, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	MPI_Gatherv(localPointsArr, 2*numLocalPoints, MPI_DOUBLE, allPointsArr, dNumLocalPointsArr, dCumNumLocalPointsArr, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	// Convert allPointsArr to points vector
-	vector<Point> allPoints;
+	vector<Point2f> allPoints;
 	for(int i = 0; i < totalNumPoints; i++) {
-		allPoints.push_back(Point(allPointsArr[2*i], allPointsArr[2*i+1]));
+		allPoints.push_back(Point2f(allPointsArr[2*i], allPointsArr[2*i+1]));
 	}
 
 	if(rank == 0) {
@@ -513,7 +512,7 @@ int mpiMain(int argc, char** argv) {
 		map<int, Vec3b> clusterColors;
 		for(int i = 0; i < totalNumPoints; i++) {
 			int clusterIndex = allClusterIndexes[i];
-			Point point = allPoints[i];
+			Point2f point = allPoints[i];
 			if(clusterColors.count(clusterIndex) == 0) {
 				Vec3b color(rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255));
 				clusterColors.insert(pair<int, Vec3b>(clusterIndex, color));
