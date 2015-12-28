@@ -13,7 +13,7 @@ using namespace std;
 using namespace cv;
 
 RNG rng(12345);
-
+/*
 int getNumFrames(char* imDir) {
 	char cmd[512];
 	sprintf(cmd, "ls %s/image_[0-9]*.png | wc -l", imDir);
@@ -242,6 +242,7 @@ void findBorder2() {
 		cout << endl;
 	}
 }
+*/
 
 int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*& imLoc) {
 	char optChar;
@@ -505,6 +506,8 @@ int mpiMain(int argc, char** argv) {
 	if(rank == 0) {
 		// Stop timing
 		double endTime = MPI_Wtime();
+		// Print info
+		cout << "Num procs: " << p << endl;
 		cout << "Total time (s): " << endTime-startTime << endl;
 
 		// Color the clusters

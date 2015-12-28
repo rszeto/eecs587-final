@@ -332,6 +332,8 @@ int mpiMain(int argc, char** argv) {
 	if(rank == 0) {
 		// Stop timing
 		double endTime = MPI_Wtime();
+		// Print info
+		cout << "Num procs: " << p << endl;
 		cout << "Total time (s): " << endTime-startTime << endl;
 
 		// Color the clusters
