@@ -15,5 +15,8 @@ opencvUtil.o: opencvUtil.hpp opencvUtil.cpp
 uf.o: uf.hpp uf.cpp
 	$(CC) -c -o uf.o uf.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
 
+main2: main2.cpp
+	$(CC) -o main2 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
+
 clean:
-	rm main *.o
+	rm main main2 *.o
