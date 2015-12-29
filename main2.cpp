@@ -97,7 +97,6 @@ int mpiMain(int argc, char** argv) {
 	// Find the procs to communicate with
 	vector<int> connectedProcsUpper;
 	vector<int> connectedProcsLower;
-	vector<int> connectedProcs;
 	for(int i = -maxProcDistVert; i <= maxProcDistVert; i++) {
 		for(int j = -maxProcDistHoriz; j <= maxProcDistHoriz; j++) {
 				// Skip horizontal out of bounds
@@ -110,7 +109,6 @@ int mpiMain(int argc, char** argv) {
 						connectedProcsUpper.push_back(adjProc);
 					else if(adjProc < rank)
 						connectedProcsLower.push_back(adjProc);
-					connectedProcs.push_back(adjProc);
 				}
 			}
 		}
@@ -161,7 +159,7 @@ int mpiMain(int argc, char** argv) {
 	int numLocalPoints = localPoints.size();
 	// Array keeping track of how many points each proc owns
 	int numLocalPointsArr[p];
-	// Array keeping track of how many points are owned by procs before this one
+	// Cumulated version of above array (ie. cumulation over all procs)
 	int cumNumLocalPointsArr[p];
 	// Array keeping track of which proc each point is on
 	vector<int> pointToProc;
@@ -197,20 +195,33 @@ int mpiMain(int argc, char** argv) {
 		MPI_Isend(localPointsArr, 2*numLocalPoints, MPI_FLOAT, connectedProcsLower[i], 0, MPI_COMM_CART, &sendReqs[i]);
 	}
 
-	// Figure out width of dists matrix (sum of number of points at connected procs plus this proc)
-	int numConnectedPoints = 0;
-	vector<int> cumNumConnectedPoints;
-	for(int i = 0; i < connectedProcs.size(); i++) {
-		cumNumConnectedPoints.push_back(numConnectedPoints);
-		numConnectedPoints += numLocalPointsArr[connectedProcs[i]];
+	// Figure out width of dists matrix, which keeps track of distances between points owned
+	// by this proc and points owned by higher procs
+	int numLocalAndUpperPts = 0;
+	vector<int> cumNumLocalAndUpperPts;
+	// Vector mapping column indexes to global ones
+	vector<int> localAndUpperIdxToGlobal;
+	// Add points on this processor
+	cumNumLocalAndUpperPts.push_back(numLocalAndUpperPts);
+	numLocalAndUpperPts += numLocalPoints;
+	for(int i = 0; i < numLocalPoints; i++)
+		localAndUpperIdxToGlobal.push_back(cumNumLocalPointsArr[rank]+i);
+	// Add points from upper procs
+	for(int r = 0; r < connectedProcsUpper.size(); r++) {
+		int otherRank = connectedProcsUpper[r];
+		cumNumLocalAndUpperPts.push_back(numLocalAndUpperPts);
+		numLocalAndUpperPts += numLocalPointsArr[otherRank];
+		for(int i = 0; i < numLocalPointsArr[otherRank]; i++)
+			localAndUpperIdxToGlobal.push_back(cumNumLocalPointsArr[otherRank]+i);
 	}
 
 	// Calculate local distances
-	Mat dists = Mat(numLocalPoints, numConnectedPoints, CV_32F, numeric_limits<float>::max());
+	Mat dists = Mat(numLocalPoints, numLocalAndUpperPts, CV_32F, numeric_limits<float>::max());
+	// Mat dists = Mat(numLocalPoints, numLocalAndUpperPts, CV_32F, -1);
 	for(int i = 0; i < numLocalPoints; i++) {
 		for(int j = i+1; j < numLocalPoints; j++) {
-			int whateverJ = cumNumConnectedPoints[connectedProcsLower.size()]+j;
-			dists.at<float>(i, whateverJ) = norm(localPoints[i]-localPoints[j]);
+			// int whateverJ = cumNumLocalAndUpperPts[connectedProcsLower.size()]+j;
+			dists.at<float>(i, j) = norm(localPoints[i]-localPoints[j]);
 		}
 	}
 
@@ -226,7 +237,7 @@ int mpiMain(int argc, char** argv) {
 		}
 		// Calculate distance of other points from points on this proc
 		for(int i = 0; i < numLocalPoints; i++) {
-			int start = cumNumConnectedPoints[connectedProcsLower.size()+1+r];
+			int start = cumNumLocalAndUpperPts[1+r];
 			for(int j = 0; j < numLocalPointsArr[otherRank]; j++) {
 				int whateverJ = start+j;
 				dists.at<float>(i, whateverJ) = norm(localPoints[i]-otherPoints[j]);
@@ -272,19 +283,8 @@ int mpiMain(int argc, char** argv) {
 		
 		// Get global position of minimum
 		int globalPos[2];
-		globalPos[0] = cumNumLocalPointsArr[rank] + minLoc.x;
-
-		// Find rank of minLoc.y
-		int rankIdx = connectedProcs.size()-1;
-		for(int r = 1; r < connectedProcs.size(); r++) {
-			if(minLoc.y < cumNumConnectedPoints[r]) {
-				rankIdx = r-1;
-				break;
-			}
-		}
-		// Get global position of minLoc.y
-		globalPos[1] = cumNumLocalPointsArr[connectedProcs[rankIdx]] // Start idx of points on rank
-				+ minLoc.y - cumNumConnectedPoints[rankIdx]; // Offset
+		globalPos[0] = localAndUpperIdxToGlobal[minLoc.x];
+		globalPos[1] = localAndUpperIdxToGlobal[minLoc.y];
 		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_WORLD);
 
 		// Get which procs own the points whose clusters should be updated
