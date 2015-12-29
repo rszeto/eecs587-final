@@ -283,8 +283,10 @@ int mpiMain(int argc, char** argv) {
 		
 		// Get global position of minimum
 		int globalPos[2];
-		globalPos[0] = localAndUpperIdxToGlobal[minLoc.x];
-		globalPos[1] = localAndUpperIdxToGlobal[minLoc.y];
+		if(rank == out.rank) {
+			globalPos[0] = localAndUpperIdxToGlobal[minLoc.x];
+			globalPos[1] = localAndUpperIdxToGlobal[minLoc.y];
+		}
 		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_WORLD);
 
 		// Get which procs own the points whose clusters should be updated
