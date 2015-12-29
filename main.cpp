@@ -394,12 +394,11 @@ int mpiMain(int argc, char** argv) {
 	}
 
 	// Calculate distances between points that this proc owns
-	Mat dists = Mat(numLocalPoints, totalNumPoints, CV_32F, numeric_limits<float>::max());
+	Mat dists = Mat(numLocalPoints, totalNumPoints-cumNumLocalPointsArr[rank], CV_32F, numeric_limits<float>::max());
+	// Mat dists = Mat(numLocalPoints, totalNumPoints-cumNumLocalPointsArr[rank], CV_32F, -1);
 	for(int i = 0; i < numLocalPoints; i++) {
-		int globalI = cumNumLocalPointsArr[rank] + i;
 		for(int j = i+1; j < numLocalPoints; j++) {
-			int globalJ = cumNumLocalPointsArr[rank] + j;
-			dists.at<float>(i, globalJ) = norm(localPoints[i]-localPoints[j]);
+			dists.at<float>(i, j) = norm(localPoints[i]-localPoints[j]);
 		}
 	}
 
@@ -414,12 +413,24 @@ int mpiMain(int argc, char** argv) {
 		}
 		// Calculate distance of other points from points on this proc
 		for(int i = 0; i < numLocalPoints; i++) {
-			for(int j = 0; j < numLocalPointsArr[otherRank]; j++) {
-				int globalJ = cumNumLocalPointsArr[otherRank] + j;
-				dists.at<float>(i, globalJ) = norm(localPoints[i]-otherPoints[j]);
+			for(int j = 0; j < otherPoints.size(); j++) {
+				// int globalJ = cumNumLocalPointsArr[otherRank] + j;
+				// dists.at<float>(i, globalJ) = norm(localPoints[i]-otherPoints[j]);
+				int whateverJ = j + cumNumLocalPointsArr[otherRank] - cumNumLocalPointsArr[rank];
+				dists.at<float>(i, whateverJ) = norm(localPoints[i]-otherPoints[j]);
 			}
 		}
 	}
+
+	// for(int r = 0; r < p; r++) {
+	// 	if(rank == r) {
+	// 		cout << rank << endl;
+	// 		cout << dists << endl;
+	// 	}
+	// 	MPI_Barrier(MPI_COMM_WORLD);
+	// }
+	// MPI_Finalize();
+	// return 0;
 
 	double thresh = 3.0;
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
@@ -458,7 +469,9 @@ int mpiMain(int argc, char** argv) {
 		}
 		
 		// Get global position of minimum
-		int globalPos[2] = {cumNumLocalPointsArr[rank] + minLoc.x, minLoc.y};
+		int globalPos[2];
+		globalPos[0] = cumNumLocalPointsArr[rank] + minLoc.x;
+		globalPos[1] = cumNumLocalPointsArr[rank] + minLoc.y;
 		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_WORLD);
 
 		// Get which procs own the points whose clusters should be updated
