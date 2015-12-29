@@ -510,11 +510,7 @@ int mpiMain(int argc, char** argv) {
 		dCumNumLocalPointsArr[i] = 2*cumNumLocalPointsArr[i];
 	}
 	MPI_Gatherv(localPointsArr, 2*numLocalPoints, MPI_FLOAT, allPointsArr, dNumLocalPointsArr, dCumNumLocalPointsArr, MPI_FLOAT, 0, MPI_COMM_WORLD);
-	// Convert allPointsArr to points vector
-	vector<Point> allPoints;
-	for(int i = 0; i < totalNumPoints; i++) {
-		allPoints.push_back(Point(allPointsArr[2*i], allPointsArr[2*i+1]));
-	}
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	if(rank == 0) {
 		// Stop timing
@@ -522,6 +518,12 @@ int mpiMain(int argc, char** argv) {
 		// Print info
 		cout << "Num procs: " << p << endl;
 		cout << "Total time (s): " << endTime-startTime << endl;
+
+		// Convert allPointsArr to points vector
+		vector<Point> allPoints;
+		for(int i = 0; i < totalNumPoints; i++) {
+			allPoints.push_back(Point(allPointsArr[2*i], allPointsArr[2*i+1]));
+		}
 
 		// Color the clusters
 		Mat final;
