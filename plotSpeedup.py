@@ -9,9 +9,8 @@ if len(sys.argv) <= 1:
     exit()
 
 logDirs = sys.argv[1:]
-plotDatas = []
 maxNumProcs = 0
-for logDir in logDirs:
+for i,logDir in enumerate(logDirs):
     files = os.listdir(logDir)
     plotData = {}
     for file in files:
@@ -39,19 +38,17 @@ for logDir in logDirs:
             
             # Close the file
             f.close()
-    plotDatas.append(plotData)
-
-for i in range(len(plotDatas)):
-    plotData = plotDatas[i]
-    # Print data to be plotted
+    # Print info
+    print 'Method %d (%s):' % (i, logDir)
     pprint(plotData)
+    
     # Calculate mean trend
     medianTimes = [(x, np.median(y)) for x,y in sorted(plotData.iteritems())]
     # Calculate speedup
     oldTime = np.median(plotData[1])
     speedups = [(x, oldTime/y) for x,y in medianTimes]
     # Plot actual speedup
-    plt.plot(*zip(*speedups), label='Method '+str(i))
+    plt.plot(*zip(*speedups), label='Method '+str(i), linewidth=2)
 
 # Plot ideal speedup
 plt.plot([0, maxNumProcs], [0, maxNumProcs], label='Ideal')
