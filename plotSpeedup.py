@@ -38,6 +38,9 @@ for i,logDir in enumerate(logDirs):
             
             # Close the file
             f.close()
+    # Sort times
+    for k in plotData.keys():
+        plotData[k].sort()
     # Print info
     print 'Method %d (%s):' % (i, logDir)
     pprint(plotData)
