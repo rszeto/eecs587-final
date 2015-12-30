@@ -127,7 +127,7 @@ int mpiMain(int argc, char** argv) {
 				cout << localImage << endl;
 				cout << "=====" << rank << endl;
 			}
-			MPI_Barrier(MPI_COMM_WORLD);
+			MPI_Barrier(MPI_COMM_CART);
 		}
 	}
 
@@ -149,7 +149,7 @@ int mpiMain(int argc, char** argv) {
 		}
 	}
 
-	MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Barrier(MPI_COMM_CART);
 	double startTime;
 	if(rank == 0) {
 		startTime = MPI_Wtime();
@@ -220,7 +220,6 @@ int mpiMain(int argc, char** argv) {
 	// Mat dists = Mat(numLocalPoints, numLocalAndUpperPts, CV_32F, -1);
 	for(int i = 0; i < numLocalPoints; i++) {
 		for(int j = i+1; j < numLocalPoints; j++) {
-			// int whateverJ = cumNumLocalAndUpperPts[connectedProcsLower.size()]+j;
 			dists.at<float>(i, j) = norm(localPoints[i]-localPoints[j]);
 		}
 	}
@@ -246,10 +245,14 @@ int mpiMain(int argc, char** argv) {
 	}
 
 	// Merge clusters
+	double iterTime = MPI_Wtime();
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
 
 		if(verbose && rank == 0 && loopVar % 200 == 0) {
-			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2 << endl;
+			double curTime = MPI_Wtime();
+			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2
+					<< " (" << curTime-iterTime << "s)" << endl;
+			iterTime = MPI_Wtime();
 		}
 
 		// Find the smallest distance

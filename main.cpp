@@ -287,6 +287,8 @@ int mpiMain(int argc, char** argv) {
 
 	// Load image
 	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
+	// Max distance that points in the same cluster can be
+	double thresh = 3.0;
 
 	// Get number of procs
 	int p;
@@ -414,29 +416,21 @@ int mpiMain(int argc, char** argv) {
 		// Calculate distance of other points from points on this proc
 		for(int i = 0; i < numLocalPoints; i++) {
 			for(int j = 0; j < otherPoints.size(); j++) {
-				// int globalJ = cumNumLocalPointsArr[otherRank] + j;
-				// dists.at<float>(i, globalJ) = norm(localPoints[i]-otherPoints[j]);
 				int whateverJ = j + cumNumLocalPointsArr[otherRank] - cumNumLocalPointsArr[rank];
 				dists.at<float>(i, whateverJ) = norm(localPoints[i]-otherPoints[j]);
 			}
 		}
 	}
 
-	// for(int r = 0; r < p; r++) {
-	// 	if(rank == r) {
-	// 		cout << rank << endl;
-	// 		cout << dists << endl;
-	// 	}
-	// 	MPI_Barrier(MPI_COMM_WORLD);
-	// }
-	// MPI_Finalize();
-	// return 0;
-
-	double thresh = 3.0;
+	// Merge clusters
+	double iterTime = MPI_Wtime();
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
 
 		if(verbose && rank == 0 && loopVar % 200 == 0) {
-			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2 << endl;
+			double curTime = MPI_Wtime();
+			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2
+					<< " (" << curTime-iterTime << "s)" << endl;
+			iterTime = MPI_Wtime();
 		}
 
 		// Find the smallest distance
