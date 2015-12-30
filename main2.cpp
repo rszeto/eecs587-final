@@ -166,7 +166,7 @@ int mpiMain(int argc, char** argv) {
 	// Total number of points
 	int totalNumPoints = 0;
 	// Populate above vars
-	MPI_Allgather(&numLocalPoints, 1, MPI_INT, numLocalPointsArr, 1, MPI_INT, MPI_COMM_WORLD);
+	MPI_Allgather(&numLocalPoints, 1, MPI_INT, numLocalPointsArr, 1, MPI_INT, MPI_COMM_CART);
 	for(int i = 0; i < p; i++) {
 		cumNumLocalPointsArr[i] = (i == 0 ? 0 : cumNumLocalPointsArr[i-1] + numLocalPointsArr[i-1]);
 		pointToProc.insert(pointToProc.end(), numLocalPointsArr[i], i);
@@ -243,6 +243,28 @@ int mpiMain(int argc, char** argv) {
 			}
 		}
 	}
+	
+	// Print work size information
+	if(verbose) {
+		int distsSize[] = {dists.rows, dists.cols};
+		int localWork = dists.rows * dists.cols;
+		
+		int allDistsSize[2*p];
+		int totalWork;
+		MPI_Gather(distsSize, 2, MPI_INT, allDistsSize, 2, MPI_INT, 0, MPI_COMM_CART);
+		MPI_Reduce(&localWork, &totalWork, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_CART);
+		
+		if(rank == 0) {
+			for(int r = 0; r < p; r++) {
+				int rows = allDistsSize[2*r];
+				int cols = allDistsSize[2*r+1];
+				fprintf(stdout, "Dists size for rank %d: [%d,%d]=>%d\n",
+						r, rows, cols, rows*cols);
+			}
+			cout << "Total work: " << totalWork << endl;
+		}
+		MPI_Barrier(MPI_COMM_CART);
+	}
 
 	// Merge clusters
 	double iterTime = MPI_Wtime();
@@ -261,7 +283,7 @@ int mpiMain(int argc, char** argv) {
 		minMaxLoc(dists, &minDist, NULL, &minLoc);
 		// Cast minDist to float
 		float minDistF = (float)minDist;
-		// Handle case where no valid value (ie. not MAX_VALUE) was found
+		// Handle case where matrix is empty
 		if(minLoc == Point(-1, -1)) {
 			minDistF = numeric_limits<float>::max();
 		}
@@ -274,7 +296,7 @@ int mpiMain(int argc, char** argv) {
 		} in, out;
 		in.val = minDistF;
 		in.rank = rank;
-		MPI_Allreduce(&in, &out, 1, MPI_FLOAT_INT, MPI_MINLOC, MPI_COMM_WORLD);
+		MPI_Allreduce(&in, &out, 1, MPI_FLOAT_INT, MPI_MINLOC, MPI_COMM_CART);
 		// Quit if min value is too high
 		if(out.val > thresh) {
 			break;
@@ -290,7 +312,7 @@ int mpiMain(int argc, char** argv) {
 			globalPos[0] = localAndUpperIdxToGlobal[minLoc.x];
 			globalPos[1] = localAndUpperIdxToGlobal[minLoc.y];
 		}
-		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_WORLD);
+		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_CART);
 
 		// Get which procs own the points whose clusters should be updated
 		int rankA = pointToProc[globalPos[0]];
@@ -300,12 +322,12 @@ int mpiMain(int argc, char** argv) {
 		if(rank == rankA) {
 			clusterA = clusterIndexes[globalPos[0]-cumNumLocalPointsArr[rank]];
 		}
-		MPI_Bcast(&clusterA, 1, MPI_INT, rankA, MPI_COMM_WORLD);
+		MPI_Bcast(&clusterA, 1, MPI_INT, rankA, MPI_COMM_CART);
 		// Get the cluster of the second point
 		if(rank == rankB) {
 			clusterB = clusterIndexes[globalPos[1]-cumNumLocalPointsArr[rank]];
 		}
-		MPI_Bcast(&clusterB, 1, MPI_INT, rankB, MPI_COMM_WORLD);
+		MPI_Bcast(&clusterB, 1, MPI_INT, rankB, MPI_COMM_CART);
 		// If the points were in different clusters, update
 		if(clusterA != clusterB) {
 			// Update cluster indexes
@@ -319,7 +341,7 @@ int mpiMain(int argc, char** argv) {
 
 	// Gather cluster indexes from all procs
 	int allClusterIndexes[totalNumPoints];
-	MPI_Gatherv(clusterIndexes, numLocalPoints, MPI_INT, allClusterIndexes, numLocalPointsArr, cumNumLocalPointsArr, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Gatherv(clusterIndexes, numLocalPoints, MPI_INT, allClusterIndexes, numLocalPointsArr, cumNumLocalPointsArr, MPI_INT, 0, MPI_COMM_CART);
 	// Gather points
 	float allPointsArr[2*totalNumPoints];
 	int dNumLocalPointsArr[p], dCumNumLocalPointsArr[p];
@@ -327,7 +349,7 @@ int mpiMain(int argc, char** argv) {
 		dNumLocalPointsArr[i] = 2*numLocalPointsArr[i];
 		dCumNumLocalPointsArr[i] = 2*cumNumLocalPointsArr[i];
 	}
-	MPI_Gatherv(localPointsArr, 2*numLocalPoints, MPI_FLOAT, allPointsArr, dNumLocalPointsArr, dCumNumLocalPointsArr, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	MPI_Gatherv(localPointsArr, 2*numLocalPoints, MPI_FLOAT, allPointsArr, dNumLocalPointsArr, dCumNumLocalPointsArr, MPI_FLOAT, 0, MPI_COMM_CART);
 	MPI_Barrier(MPI_COMM_CART);
 
 	if(rank == 0) {

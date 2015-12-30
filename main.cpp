@@ -372,9 +372,12 @@ int mpiMain(int argc, char** argv) {
 		pointToProc.insert(pointToProc.end(), numLocalPointsArr[i], i);
 	}
 	totalNumPoints = pointToProc.size();
-	if(verbose && rank == 0) {
-		cout << "Num points: " << totalNumPoints << endl;
-		cout << "Num pairs: " << totalNumPoints*(totalNumPoints-1)/2 << endl;
+	if(verbose) {
+		if(rank == 0) {
+			cout << "Num points: " << totalNumPoints << endl;
+			cout << "Num pairs: " << totalNumPoints*(totalNumPoints-1)/2 << endl;
+		}
+		MPI_Barrier(MPI_COMM_WORLD);
 	}
 
 	// Set cluster indexes for local points
@@ -397,7 +400,6 @@ int mpiMain(int argc, char** argv) {
 
 	// Calculate distances between points that this proc owns
 	Mat dists = Mat(numLocalPoints, totalNumPoints-cumNumLocalPointsArr[rank], CV_32F, numeric_limits<float>::max());
-	// Mat dists = Mat(numLocalPoints, totalNumPoints-cumNumLocalPointsArr[rank], CV_32F, -1);
 	for(int i = 0; i < numLocalPoints; i++) {
 		for(int j = i+1; j < numLocalPoints; j++) {
 			dists.at<float>(i, j) = norm(localPoints[i]-localPoints[j]);
@@ -421,6 +423,28 @@ int mpiMain(int argc, char** argv) {
 			}
 		}
 	}
+	
+	// Print work size information
+	if(verbose) {
+		int distsSize[] = {dists.rows, dists.cols};
+		int localWork = dists.rows * dists.cols;
+		
+		int allDistsSize[2*p];
+		int totalWork;
+		MPI_Gather(distsSize, 2, MPI_INT, allDistsSize, 2, MPI_INT, 0, MPI_COMM_WORLD);
+		MPI_Reduce(&localWork, &totalWork, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+		
+		if(rank == 0) {
+			for(int r = 0; r < p; r++) {
+				int rows = allDistsSize[2*r];
+				int cols = allDistsSize[2*r+1];
+				fprintf(stdout, "Dists size for rank %d: [%d,%d]=>%d\n",
+						r, rows, cols, rows*cols);
+			}
+			cout << "Total work: " << totalWork << endl;
+		}
+		MPI_Barrier(MPI_COMM_WORLD);
+	}
 
 	// Merge clusters
 	double iterTime = MPI_Wtime();
@@ -439,7 +463,7 @@ int mpiMain(int argc, char** argv) {
 		minMaxLoc(dists, &minDist, NULL, &minLoc);
 		// Cast minDist to float
 		float minDistF = (float)minDist;
-		// Handle case where no valid value (ie. not MAX_VALUE) was found
+		// Handle case where matrix is empty
 		if(minLoc == Point(-1, -1)) {
 			minDistF = numeric_limits<float>::max();
 		}
