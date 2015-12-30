@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <map>
 #include <getopt.h>
+#include <string>
+#include <fstream>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -284,12 +286,7 @@ int mpiMain(int argc, char** argv) {
 	}
 
 	MPI_Init(&argc, &argv);
-
-	// Load image
-	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
-	// Max distance that points in the same cluster can be
-	double thresh = 3.0;
-
+	
 	// Get number of procs
 	int p;
 	MPI_Comm_size(MPI_COMM_WORLD, &p);
@@ -302,24 +299,46 @@ int mpiMain(int argc, char** argv) {
 	// Get row and column of this proc
 	int rRow = rank / sqP;
 	int rCol = rank % sqP;
+	
+	// Get locations of the original and contour images
+	string origImageLoc(imLoc);
+	string contImageLoc(imLoc);
+	contImageLoc.replace(contImageLoc.find(".png"), 4, "_c.png");
+	// Make sure both images exist
+	ifstream origF(origImageLoc.c_str());
+	ifstream contF(contImageLoc.c_str());
+	if(!origF.good() || !contF.good()) {
+		origF.close();
+		contF.close();
+		if(rank == 0) {
+			fprintf(stderr, "Could not find both %s and %s, exiting\n",
+					origImageLoc.c_str(), contImageLoc.c_str());
+		}
+		MPI_Finalize();
+		return 0;
+	}
+	origF.close();
+	contF.close();
+
+	// Load contour image
+	Mat contImage = imread(contImageLoc.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
+	// Max distance that points in the same cluster can be
+	double thresh = 3.0;
 
 	// Get width and height of image on most procs
-	int normBlockWidth = image.cols / sqP;
-	int normBlockHeight = image.rows / sqP;
+	int normBlockWidth = contImage.cols / sqP;
+	int normBlockHeight = contImage.rows / sqP;
 	int localBlockWidth = normBlockWidth;
 	int localBlockHeight = normBlockHeight;
 	// Adjust width or height if this is the last proc
 	if(rRow == sqP-1)
-		localBlockHeight = image.rows - (sqP-1)*normBlockHeight;
+		localBlockHeight = contImage.rows - (sqP-1)*normBlockHeight;
 	if(rCol == sqP-1)
-		localBlockWidth = image.cols - (sqP-1)*normBlockWidth;
+		localBlockWidth = contImage.cols - (sqP-1)*normBlockWidth;
 
-	// Pad the border of the total image so contours can be found on whole image
-	Mat paddedImage;
-	copyMakeBorder(image, paddedImage, 2, 2, 2, 2, BORDER_CONSTANT, 0);
-	// Extract local region plus context of width 2
-	Rect localROI(rCol*normBlockWidth, rRow*normBlockHeight, localBlockWidth+4, localBlockHeight+4);
-	Mat localImage = paddedImage(localROI);
+	// Extract local region
+	Rect localROI(rCol*normBlockWidth, rRow*normBlockHeight, localBlockWidth, localBlockHeight);
+	Mat localImage = contImage(localROI);
 
 	if(verbose && localImage.rows < 15 && localImage.cols < 15) {
 		for(int r = 0; r < p; r++) {
@@ -331,21 +350,14 @@ int mpiMain(int argc, char** argv) {
 		}
 	}
 
-	// Get contours of local image
-	vector<vector<Point> > contours;
-	vector<Vec4i> hierarchy;
-	findContours(localImage, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_NONE);
-
 	// Populate the contour points to use for clustering
 	vector<Point> localPoints;
 	// Correct offset of local region
-	Point offset(rRow*normBlockHeight-2, rCol*normBlockWidth-2);
-	for(int i = 0; i < contours.size(); i++) {
-		for(int j = 0; j < contours[i].size(); j++) {
-			Point2d pt = contours[i][j];
-			if(pt.x < 2 || pt.x > localBlockWidth+1 || pt.y < 2 || pt.y > localBlockHeight+1)
-				continue;
-			localPoints.push_back(Point(pt.y, pt.x) + offset);
+	Point offset(rRow*normBlockHeight, rCol*normBlockWidth);
+	for(int i = 0; i < localImage.rows; i++) {
+		for(int j = 0; j < localImage.cols; j++) {
+			if(localImage.at<uchar>(i, j) == 255)
+				localPoints.push_back(Point(i, j) + offset);
 		}
 	}
 
@@ -544,8 +556,9 @@ int mpiMain(int argc, char** argv) {
 		}
 
 		// Color the clusters
+		Mat origImage = imread(origImageLoc.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
 		Mat final;
-		cvtColor(image, final, CV_GRAY2RGB);
+		cvtColor(origImage, final, CV_GRAY2RGB);
 		map<int, Vec3b> clusterColors;
 		for(int i = 0; i < totalNumPoints; i++) {
 			int clusterIndex = allClusterIndexes[i];
@@ -560,7 +573,7 @@ int mpiMain(int argc, char** argv) {
 
 		if(displayImages) {
 			namedWindow("final", CV_WINDOW_KEEPRATIO);
-			imshow("final", image);
+			imshow("final", origImage);
 			waitKey(0);
 			imshow("final", final);
 			waitKey(0);
