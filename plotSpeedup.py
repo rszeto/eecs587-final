@@ -10,6 +10,7 @@ if len(sys.argv) <= 1:
 
 logDirs = sys.argv[1:]
 maxNumProcs = 0
+plotDatas = []
 for i,logDir in enumerate(logDirs):
     files = os.listdir(logDir)
     plotData = {}
@@ -41,22 +42,51 @@ for i,logDir in enumerate(logDirs):
     # Sort times
     for k in plotData.keys():
         plotData[k].sort()
-    # Print info
-    print 'Method %d (%s):' % (i, logDir)
-    pprint(plotData)
-    
-    # Calculate mean trend
-    medianTimes = [(x, np.median(y)) for x,y in sorted(plotData.iteritems())]
-    # Calculate speedup
-    oldTime = np.median(plotData[1])
-    speedups = [(x, oldTime/y) for x,y in medianTimes]
-    # Plot actual speedup
-    plt.plot(*zip(*speedups), label='Method '+str(i), linewidth=2)
+    # Store plotData and directory name
+    plotDatas.append(plotData)
 
+# Print plot data
+for i in range(len(logDirs)):
+    print 'Method %d (%s):' % (i, logDirs[i])
+    pprint(plotDatas[i])
+
+# Plot speedup using median times
+plt.figure(1)
+for i in range(len(logDirs)):
+    plotData = plotDatas[i]
+    medianTimes = [(x, np.median(y)) for x,y in sorted(plotData.iteritems())]
+    serialTime = np.median(plotData[1])
+    speedups = [(x, serialTime/y) for x,y in medianTimes]
+    plt.plot(*zip(*speedups), label='Method '+str(i), linewidth=2)
 # Plot ideal speedup
 plt.plot([0, maxNumProcs], [0, maxNumProcs], label='Ideal')
 # Scale axes
 plt.xlim([0, maxNumProcs])
 plt.ylim([0, maxNumProcs])
+# Labels
+plt.xlabel('# procs')
+plt.ylabel('Speedup')
+plt.title('Speedup using median times')
 plt.legend(loc='upper left')
+
+# Plot speedup using min times
+plt.figure(2)
+for i in range(len(logDirs)):
+    plotData = plotDatas[i]
+    minTimes = [(x, np.min(y)) for x,y in sorted(plotData.iteritems())]
+    serialTime = np.min(plotData[1])
+    speedups = [(x, serialTime/y) for x,y in minTimes]
+    plt.plot(*zip(*speedups), label='Method '+str(i), linewidth=2)
+# Plot ideal speedup
+plt.plot([0, maxNumProcs], [0, maxNumProcs], label='Ideal')
+# Scale axes
+plt.xlim([0, maxNumProcs])
+plt.ylim([0, maxNumProcs])
+# Labels
+plt.xlabel('# procs')
+plt.ylabel('Speedup')
+plt.title('Speedup using min times')
+plt.legend(loc='upper left')
+
+# Display plots
 plt.show()
