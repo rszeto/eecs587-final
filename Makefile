@@ -8,7 +8,7 @@ CC = mpiCC
 
 default: main2
 
-all: main main2 main3 contourify
+all: main main2 main3 main4 contourify
 
 main: main.cpp
 	$(CC) -o main $^ $(LINKFLAGS) $(LIBPATHFLAGS)
@@ -18,6 +18,9 @@ main2: main2.cpp
 
 main3: main3.cpp
 	$(CC) -o main3 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
+
+main4: main4.cpp
+	$(CC) -o main4 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
 contourify: contourify.cpp
 	$(CC) -o contourify $^ $(LINKFLAGS) $(LIBPATHFLAGS)
