@@ -6,7 +6,7 @@ LIBPATHFLAGS = $(addprefix -L,$(LIBPATHS))
 
 CC = mpiCC
 
-all: main main2 main3 contourify
+all: main main2 main3 main5 contourify
 
 main: main.cpp util.o
 	$(CC) -o main $^ $(LINKFLAGS) $(LIBPATHFLAGS)
@@ -19,6 +19,9 @@ main3: main3.cpp util.o
 
 # main4: main4.cpp
 # 	$(CC) -o main4 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
+
+main5: main5.cpp util.o
+	$(CC) -o main5 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
 contourify: contourify.cpp
 	$(CC) -o contourify $^ $(LINKFLAGS) $(LIBPATHFLAGS)
