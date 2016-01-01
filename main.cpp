@@ -2,7 +2,6 @@
 #include <iostream>
 #include <cstdio>
 #include <map>
-#include <getopt.h>
 #include <string>
 #include <fstream>
 
