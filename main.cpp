@@ -246,6 +246,20 @@ void findBorder2() {
 }
 */
 
+Point linToTup(int k, int n) {
+	int i = n - 1 - floor(sqrt(-8*k + 4*(n+1)*n - 7)/2.0 - 0.5);
+	int j = k + i - (n+1)*n/2 + (n-i+1)*(n-i)/2;
+	return Point(i, j);
+}
+
+int tupToLin(int i, int j, int n) {
+	return n*i + j - i*(i+1)/2;
+}
+
+int triMatSize(int rows, int cols) {
+	return rows*cols - rows*(rows-1)/2;
+}
+
 int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*& imLoc) {
 	char optChar;
 	while((optChar = getopt(argc, argv, "dvi:")) != -1) {
@@ -411,10 +425,16 @@ int mpiMain(int argc, char** argv) {
 	}
 
 	// Calculate distances between points that this proc owns
-	Mat dists = Mat(numLocalPoints, totalNumPoints-cumNumLocalPointsArr[rank], CV_32F, numeric_limits<float>::max());
+	// Note that we only store the upper triangular part of matrix, excluding the diagonal
+	// Example:
+	// xxxxxx
+	// 0xxxxx
+	// 00xxxx
+	int distsWidth = totalNumPoints-cumNumLocalPointsArr[rank]-1;
+	Mat dists = Mat(triMatSize(numLocalPoints, distsWidth), 1, CV_32F, numeric_limits<float>::max());
 	for(int i = 0; i < numLocalPoints; i++) {
 		for(int j = i+1; j < numLocalPoints; j++) {
-			dists.at<float>(i, j) = norm(localPoints[i]-localPoints[j]);
+			dists.at<float>(tupToLin(i, j-1, distsWidth)) = norm(localPoints[i]-localPoints[j]);
 		}
 	}
 
@@ -430,30 +450,23 @@ int mpiMain(int argc, char** argv) {
 		// Calculate distance of other points from points on this proc
 		for(int i = 0; i < numLocalPoints; i++) {
 			for(int j = 0; j < otherPoints.size(); j++) {
-				int whateverJ = j + cumNumLocalPointsArr[otherRank] - cumNumLocalPointsArr[rank];
-				dists.at<float>(i, whateverJ) = norm(localPoints[i]-otherPoints[j]);
+				int whateverJ = j + cumNumLocalPointsArr[otherRank] - cumNumLocalPointsArr[rank] - 1;
+				dists.at<float>(tupToLin(i, whateverJ, distsWidth)) = norm(localPoints[i]-otherPoints[j]);
 			}
 		}
 	}
-	
+
 	// Print work size information
 	if(verbose) {
-		int distsSize[] = {dists.rows, dists.cols};
-		int localWork = dists.rows * dists.cols;
+		int localWork = dists.rows;
 		
-		int allDistsSize[2*p];
-		int totalWork;
-		MPI_Gather(distsSize, 2, MPI_INT, allDistsSize, 2, MPI_INT, 0, MPI_COMM_WORLD);
-		MPI_Reduce(&localWork, &totalWork, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+		int allDistsSize[p];
+		MPI_Gather(&localWork, 1, MPI_INT, allDistsSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
 		
 		if(rank == 0) {
 			for(int r = 0; r < p; r++) {
-				int rows = allDistsSize[2*r];
-				int cols = allDistsSize[2*r+1];
-				fprintf(stdout, "Dists size for rank %d: [%d,%d]=>%d\n",
-						r, rows, cols, rows*cols);
+				fprintf(stdout, "Work size for rank %d: %d\n", r, allDistsSize[r]);
 			}
-			cout << "Total work: " << totalWork << endl;
 		}
 		MPI_Barrier(MPI_COMM_WORLD);
 	}
@@ -471,16 +484,15 @@ int mpiMain(int argc, char** argv) {
 
 		// Find the smallest distance
 		double minDist;
-		Point minLoc;
-		minMaxLoc(dists, &minDist, NULL, &minLoc);
+		Point minLocIdx;
+		minMaxLoc(dists, &minDist, NULL, &minLocIdx);
+
 		// Cast minDist to float
 		float minDistF = (float)minDist;
 		// Handle case where matrix is empty
-		if(minLoc == Point(-1, -1)) {
+		if(minLocIdx == Point(-1, -1)) {
 			minDistF = numeric_limits<float>::max();
 		}
-		// Convert location to row-column order
-		minLoc = Point(minLoc.y, minLoc.x);
 
 		struct {
 			float val;
@@ -495,13 +507,16 @@ int mpiMain(int argc, char** argv) {
 		}
 
 		if(rank == out.rank) {
-			dists.at<float>(minLoc.x, minLoc.y) = numeric_limits<float>::max();
+			dists.at<float>(minLocIdx) = numeric_limits<float>::max();
 		}
+
+		// Convert dists index to location in full matrix
+		Point minLoc = linToTup(minLocIdx.y, distsWidth);
 		
 		// Get global position of minimum
 		int globalPos[2];
 		globalPos[0] = cumNumLocalPointsArr[rank] + minLoc.x;
-		globalPos[1] = cumNumLocalPointsArr[rank] + minLoc.y;
+		globalPos[1] = cumNumLocalPointsArr[rank] + minLoc.y + 1;
 		MPI_Bcast(globalPos, 2, MPI_INT, out.rank, MPI_COMM_WORLD);
 
 		// Get which procs own the points whose clusters should be updated
