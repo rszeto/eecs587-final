@@ -6,30 +6,31 @@ LIBPATHFLAGS = $(addprefix -L,$(LIBPATHS))
 
 CC = mpiCC
 
-default: main2
+all: main main2 main3 contourify
 
-all: main main2 main3 main4 contourify
-
-main: main.cpp
+main: main.cpp util.o
 	$(CC) -o main $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
-main2: main2.cpp
+main2: main2.cpp util.o
 	$(CC) -o main2 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
-main3: main3.cpp
+main3: main3.cpp util.o
 	$(CC) -o main3 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
-main4: main4.cpp
-	$(CC) -o main4 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
+# main4: main4.cpp
+# 	$(CC) -o main4 $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
 contourify: contourify.cpp
 	$(CC) -o contourify $^ $(LINKFLAGS) $(LIBPATHFLAGS)
 
-opencvUtil.o: opencvUtil.hpp opencvUtil.cpp
-	$(CC) -c -o opencvUtil.o opencvUtil.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
+# opencvUtil.o: opencvUtil.hpp opencvUtil.cpp
+# 	$(CC) -c -o opencvUtil.o opencvUtil.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
 
-uf.o: uf.hpp uf.cpp
-	$(CC) -c -o uf.o uf.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
+util.o: util.hpp util.cpp
+	$(CC) -c -o util.o util.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
+
+# uf.o: uf.hpp uf.cpp
+# 	$(CC) -c -o uf.o uf.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
 
 clean:
-	rm main main2 contourify *.o
+	rm main main2 main3 contourify *.o
