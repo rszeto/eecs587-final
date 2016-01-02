@@ -36,4 +36,4 @@ util.o: util.hpp util.cpp
 # 	$(CC) -c -o uf.o uf.cpp $(LINKFLAGS) $(LIBPATHFLAGS)
 
 clean:
-	rm main main2 main3 contourify *.o
+	rm main main2 main3 main5 contourify *.o
