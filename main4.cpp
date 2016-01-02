@@ -2,15 +2,15 @@
 #include <iostream>
 #include <cstdio>
 #include <map>
-#include <getopt.h>
 #include <string>
 #include <fstream>
 #include <queue>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
-#include "opencvUtil.hpp"
+#include "util.hpp"
 
 using namespace std;
 using namespace cv;
@@ -29,36 +29,6 @@ class DistStructComparator {
 			return a.dist > b.dist;
 		}
 };
-
-int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*& imLoc) {
-	char optChar;
-	while((optChar = getopt(argc, argv, "dvi:")) != -1) {
-		switch(optChar) {
-			case 'd':
-				displayImages = true;
-				break;
-			case 'v':
-				verbose = true;
-				break;
-			case 'i':
-				imLoc = optarg;
-				break;
-			case '?':
-				if(optopt == 'i')
-					cerr << "Image not specified with flag -i" << endl;
-				else
-					cerr << "Unknown option " << optopt << endl;
-				return 1;
-			default:
-				abort();
-		}
-	}
-	if(imLoc == NULL) {
-		cerr << "Image argument required" << endl;
-		return 1;
-	}
-	return 0;
-}
 
 int mpiMain(int argc, char** argv) {
 	bool displayImages = false;
@@ -84,45 +54,37 @@ int mpiMain(int argc, char** argv) {
 	int rRow = rank / sqP;
 	int rCol = rank % sqP;
 	
-	// Get locations of the original and contour images
-	string origImageLoc(imLoc);
-	string contImageLoc(imLoc);
-	contImageLoc.replace(contImageLoc.find(".png"), 4, "_c.png");
-	// Make sure both images exist
-	ifstream origF(origImageLoc.c_str());
-	ifstream contF(contImageLoc.c_str());
-	if(!origF.good() || !contF.good()) {
+	// Make sure given image exists
+	ifstream origF(imLoc);
+	if(!origF.good()) {
 		origF.close();
-		contF.close();
 		if(rank == 0) {
-			fprintf(stderr, "Could not find both %s and %s, exiting\n",
-					origImageLoc.c_str(), contImageLoc.c_str());
+			fprintf(stderr, "Could not find %s, exiting\n", imLoc);
 		}
 		MPI_Finalize();
 		return 0;
 	}
 	origF.close();
-	contF.close();
 
 	// Load contour image
-	Mat contImage = imread(contImageLoc.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
+	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
 	// Max distance that points in the same cluster can be
 	double thresh = 3.0;
 
 	// Get width and height of image on most procs
-	int normBlockWidth = contImage.cols / sqP;
-	int normBlockHeight = contImage.rows / sqP;
+	int normBlockWidth = image.cols / sqP;
+	int normBlockHeight = image.rows / sqP;
 	int localBlockWidth = normBlockWidth;
 	int localBlockHeight = normBlockHeight;
 	// Adjust width or height if this is the last proc
 	if(rRow == sqP-1)
-		localBlockHeight = contImage.rows - (sqP-1)*normBlockHeight;
+		localBlockHeight = image.rows - (sqP-1)*normBlockHeight;
 	if(rCol == sqP-1)
-		localBlockWidth = contImage.cols - (sqP-1)*normBlockWidth;
+		localBlockWidth = image.cols - (sqP-1)*normBlockWidth;
 
 	// Extract local region
 	Rect localROI(rCol*normBlockWidth, rRow*normBlockHeight, localBlockWidth, localBlockHeight);
-	Mat localImage = contImage(localROI);
+	Mat localImage = image(localROI);
 
 	if(verbose && localImage.rows < 15 && localImage.cols < 15) {
 		for(int r = 0; r < p; r++) {
@@ -182,6 +144,12 @@ int mpiMain(int argc, char** argv) {
 		int globalI = cumNumLocalPointsArr[rank] + i;
 		clusterIndexes[i] = globalI;
 	}
+	
+	double distStartTime;
+	if(verbose) {
+		MPI_Barrier(MPI_COMM_WORLD);
+		distStartTime = MPI_Wtime();
+	}
 
 	// Init send to lower ranked procs
 	float localPointsArr[2*numLocalPoints];
@@ -193,7 +161,7 @@ int mpiMain(int argc, char** argv) {
 	for(int i = 0; i < rank; i++) {
 		MPI_Isend(localPointsArr, 2*numLocalPoints, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &sendReqs[i]);
 	}
-
+	
 	// Populate distances PQ
 	priority_queue<distStruct, vector<distStruct>, DistStructComparator> dists;
 	for(int i = 0; i < numLocalPoints; i++) {
@@ -219,34 +187,35 @@ int mpiMain(int argc, char** argv) {
 			}
 		}
 	}
-	/*
+
+	if(verbose) {
+		MPI_Barrier(MPI_COMM_WORLD);
+		double distEndTime = MPI_Wtime();
+		if(rank == 0) {
+			cout << "Populating dists took " << distEndTime-distStartTime << "s" << endl;
+		}
+	}
+
 	// Print work size information
 	if(verbose) {
-		int distsSize[] = {dists.rows, dists.cols};
-		int localWork = dists.rows * dists.cols;
+		int localWork = dists.size();
 		
-		int allDistsSize[2*p];
-		int totalWork;
-		MPI_Gather(distsSize, 2, MPI_INT, allDistsSize, 2, MPI_INT, 0, MPI_COMM_WORLD);
-		MPI_Reduce(&localWork, &totalWork, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+		int allDistsSize[p];
+		MPI_Gather(&localWork, 1, MPI_INT, allDistsSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
 		
 		if(rank == 0) {
 			for(int r = 0; r < p; r++) {
-				int rows = allDistsSize[2*r];
-				int cols = allDistsSize[2*r+1];
-				fprintf(stdout, "Dists size for rank %d: [%d,%d]=>%d\n",
-						r, rows, cols, rows*cols);
+				fprintf(stdout, "Work size for rank %d: %d\n", r, allDistsSize[r]);
 			}
-			cout << "Total work: " << totalWork << endl;
 		}
 		MPI_Barrier(MPI_COMM_WORLD);
 	}
-	*/
+
 	// Merge clusters
 	double iterTime = MPI_Wtime();
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
 
-		if(verbose && rank == 0 && loopVar % 200 == 0) {
+		if(verbose && rank == 0 && loopVar % 2000 == 0) {
 			double curTime = MPI_Wtime();
 			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2
 					<< " (" << curTime-iterTime << "s)" << endl;
@@ -337,9 +306,8 @@ int mpiMain(int argc, char** argv) {
 		}
 
 		// Color the clusters
-		Mat origImage = imread(origImageLoc.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
 		Mat final;
-		cvtColor(origImage, final, CV_GRAY2RGB);
+		cvtColor(image, final, CV_GRAY2RGB);
 		map<int, Vec3b> clusterColors;
 		for(int i = 0; i < totalNumPoints; i++) {
 			int clusterIndex = allClusterIndexes[i];
@@ -354,7 +322,7 @@ int mpiMain(int argc, char** argv) {
 
 		if(displayImages) {
 			namedWindow("final", CV_WINDOW_KEEPRATIO);
-			imshow("final", origImage);
+			imshow("final", image);
 			waitKey(0);
 			imshow("final", final);
 			waitKey(0);
