@@ -47,7 +47,7 @@ int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*&
 	return 0;
 }
 
-void balanceWork(int* numPointsArr, int* workArr, int n, int p) {
+void balanceWork(int* numPointsArr, int n, int p) {
 	// Calculate total amount of work
 	double W = n*(n-1)/2;
 	double W_avg = W/p;
@@ -55,24 +55,34 @@ void balanceWork(int* numPointsArr, int* workArr, int n, int p) {
 	// Init arrays with 0
 	for(int i = 0; i < p; i++) {
 		numPointsArr[i] = 0;
-		workArr[i] = 0;
 	}
 	int n_rem = n; // Remaining n
 
 	for(int i = 0; i < p-1; i++) {
 		// Calculate amount of work on this proc
 		for(int n_local = 1; n_local <= n_rem; n_local++) {
-			// int W_local_est = n_local * n_rem - n_local*(n_local-1)/2;
-			int W_local_est = n_local * n_rem;
+			// int W_local_est = n_local*(n_rem-1) - n_local*(n_local-1)/2;
+			int W_local_est = n_local*(n_rem-1);
 			if(W_local_est > W_avg) {
-				int W_local_act = n_local * n_rem - n_local*(n_local-1)/2;
 				numPointsArr[i] = n_local;
-				workArr[i] = W_local_act;
 				n_rem -= n_local;
 				break;
 			}
 		}
 	}
 	numPointsArr[p-1] = n_rem;
-	workArr[p-1] = pow(n_rem, 2);
+}
+
+void calculateWork(int* numPointsArr, int* workArr, int p) {
+	// Get number of points
+	int n = 0;
+	int cumul[p];
+	for(int i = 0; i < p; i++) {
+		cumul[i] = n;
+		n += numPointsArr[i];
+	}
+	for(int i = 0; i < p; i++) {
+		int numAhead = n - cumul[i] - 1;
+		workArr[i] = numPointsArr[i]*numAhead - numPointsArr[i]*(numPointsArr[i]-1)/2;
+	}
 }

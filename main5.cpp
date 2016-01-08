@@ -77,8 +77,7 @@ int mpiMain(int argc, char** argv) {
 	// Figure out how many points each proc should have
 	int numLocalPointsArr[p];
 	int cumNumLocalPointsArr[p];
-	int workArr[p];
-	balanceWork(numLocalPointsArr, workArr, allPoints.size(), p);
+	balanceWork(numLocalPointsArr, allPoints.size(), p);
 	for(int r = 0; r < p; r++) {
 		cumNumLocalPointsArr[r] = (r == 0 ? 0 : cumNumLocalPointsArr[r-1] + numLocalPointsArr[r-1]);
 	}

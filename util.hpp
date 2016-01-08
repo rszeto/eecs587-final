@@ -11,6 +11,7 @@ int triMatSize(int rows, int cols);
 
 int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*& imLoc);
 
-void balanceWork(int* numPointsArr, int* workArr, int n, int p);
+void balanceWork(int* numPointsArr, int n, int p);
+void calculateWork(int* numPointsArr, int* workArr, int p);
 
 #endif
