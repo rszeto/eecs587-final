@@ -17,9 +17,14 @@ int triMatSize(int rows, int cols) {
 	return rows*cols - rows*(rows-1)/2;
 }
 
-int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*& imLoc) {
+int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*& imLoc, double& threshold) {
+	displayImages = false;
+	verbose = false;
+	imLoc = NULL;
+	threshold = -1;
+	
 	char optChar;
-	while((optChar = getopt(argc, argv, "dvi:")) != -1) {
+	while((optChar = getopt(argc, argv, "dvi:t:")) != -1) {
 		switch(optChar) {
 			case 'd':
 				displayImages = true;
@@ -30,9 +35,14 @@ int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*&
 			case 'i':
 				imLoc = optarg;
 				break;
+			case 't':
+				threshold = atof(optarg);
+				break;
 			case '?':
 				if(optopt == 'i')
 					cerr << "Image not specified with flag -i" << endl;
+				if(optopt == 't')
+					cerr << "Threshold not specified with flag -t" << endl;
 				else
 					cerr << "Unknown option " << optopt << endl;
 				return 1;
@@ -42,6 +52,10 @@ int handleOpts(int argc, char** argv, bool& displayImages, bool& verbose, char*&
 	}
 	if(imLoc == NULL) {
 		cerr << "Image argument required" << endl;
+		return 1;
+	}
+	if(threshold == -1) {
+		cerr << "Threshold argument required" << endl;
 		return 1;
 	}
 	return 0;

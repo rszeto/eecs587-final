@@ -247,10 +247,11 @@ void findBorder2() {
 */
 
 int mpiMain(int argc, char** argv) {
-	bool displayImages = false;
-	bool verbose = false;
-	char* imLoc = NULL;
-	int optsRet = handleOpts(argc, argv, displayImages, verbose, imLoc);
+	bool displayImages;
+	bool verbose;
+	char* imLoc;
+	double thresh;
+	int optsRet = handleOpts(argc, argv, displayImages, verbose, imLoc, thresh);
 	if(optsRet != 0) {
 		return optsRet;
 	}
@@ -292,8 +293,6 @@ int mpiMain(int argc, char** argv) {
 
 	// Load contour image
 	Mat contImage = imread(contImageLoc.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
-	// Max distance that points in the same cluster can be
-	double thresh = 3.0;
 
 	// Get width and height of image on most procs
 	int normBlockWidth = contImage.cols / sqP;
