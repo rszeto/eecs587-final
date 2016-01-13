@@ -55,35 +55,43 @@ int mpiMain(int argc, char** argv) {
 	int rRow = rank / sqP;
 	int rCol = rank % sqP;
 	
-	// Make sure given image exists
-	ifstream origF(imLoc);
-	if(!origF.good()) {
+	// Get locations of the original and contour images
+	string origImageLoc(imLoc);
+	string contImageLoc(imLoc);
+	contImageLoc.replace(contImageLoc.find(".png"), 4, "_c.png");
+	// Make sure both images exist
+	ifstream origF(origImageLoc.c_str());
+	ifstream contF(contImageLoc.c_str());
+	if(!origF.good() || !contF.good()) {
 		origF.close();
+		contF.close();
 		if(rank == 0) {
-			fprintf(stderr, "Could not find %s, exiting\n", imLoc);
+			fprintf(stderr, "Could not find both %s and %s, exiting\n",
+					origImageLoc.c_str(), contImageLoc.c_str());
 		}
 		MPI_Finalize();
 		return 0;
 	}
 	origF.close();
+	contF.close();
 
 	// Load contour image
-	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
+	Mat contImage = imread(contImageLoc.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
 
 	// Get width and height of image on most procs
-	int normBlockWidth = image.cols / sqP;
-	int normBlockHeight = image.rows / sqP;
+	int normBlockWidth = contImage.cols / sqP;
+	int normBlockHeight = contImage.rows / sqP;
 	int localBlockWidth = normBlockWidth;
 	int localBlockHeight = normBlockHeight;
 	// Adjust width or height if this is the last proc
 	if(rRow == sqP-1)
-		localBlockHeight = image.rows - (sqP-1)*normBlockHeight;
+		localBlockHeight = contImage.rows - (sqP-1)*normBlockHeight;
 	if(rCol == sqP-1)
-		localBlockWidth = image.cols - (sqP-1)*normBlockWidth;
+		localBlockWidth = contImage.cols - (sqP-1)*normBlockWidth;
 
 	// Extract local region
 	Rect localROI(rCol*normBlockWidth, rRow*normBlockHeight, localBlockWidth, localBlockHeight);
-	Mat localImage = image(localROI);
+	Mat localImage = contImage(localROI);
 
 	if(verbose && localImage.rows < 15 && localImage.cols < 15) {
 		for(int r = 0; r < p; r++) {
@@ -306,13 +314,13 @@ int mpiMain(int argc, char** argv) {
 
 		// Color the clusters
 		Mat final;
-		cvtColor(image, final, CV_GRAY2RGB);
+		cvtColor(contImage, final, CV_GRAY2RGB);
 		map<int, Vec3b> clusterColors;
 		for(int i = 0; i < totalNumPoints; i++) {
 			int clusterIndex = allClusterIndexes[i];
 			Point point = allPoints[i];
 			if(clusterColors.count(clusterIndex) == 0) {
-				Vec3b color(rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255));
+				Vec3b color(rng.uniform(128, 255), rng.uniform(128,255), rng.uniform(128,255));
 				clusterColors.insert(pair<int, Vec3b>(clusterIndex, color));
 			}
 			Vec3b color = clusterColors[clusterIndex];
@@ -321,10 +329,11 @@ int mpiMain(int argc, char** argv) {
 
 		if(displayImages) {
 			namedWindow("final", CV_WINDOW_KEEPRATIO);
-			imshow("final", image);
+			imshow("final", contImage);
 			waitKey(0);
 			imshow("final", final);
 			waitKey(0);
+			imwrite("final.png", final);
 		}
 	}
 

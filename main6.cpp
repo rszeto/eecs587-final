@@ -55,26 +55,34 @@ int mpiMain(int argc, char** argv) {
 	int rRow = rank / sqP;
 	int rCol = rank % sqP;
 	
-	// Make sure given image exists
-	ifstream origF(imLoc);
-	if(!origF.good()) {
+	// Get locations of the original and contour images
+	string origImageLoc(imLoc);
+	string contImageLoc(imLoc);
+	contImageLoc.replace(contImageLoc.find(".png"), 4, "_c.png");
+	// Make sure both images exist
+	ifstream origF(origImageLoc.c_str());
+	ifstream contF(contImageLoc.c_str());
+	if(!origF.good() || !contF.good()) {
 		origF.close();
+		contF.close();
 		if(rank == 0) {
-			fprintf(stderr, "Could not find %s, exiting\n", imLoc);
+			fprintf(stderr, "Could not find both %s and %s, exiting\n",
+					origImageLoc.c_str(), contImageLoc.c_str());
 		}
 		MPI_Finalize();
 		return 0;
 	}
 	origF.close();
+	contF.close();
 
 	// Load contour image
-	Mat image = imread(imLoc, CV_LOAD_IMAGE_GRAYSCALE);
+	Mat contImage = imread(contImageLoc.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
 
 	// Find all contour points
 	vector<Point> allPoints;
-	for(int i = 0; i < image.rows; i++) {
-		for(int j = 0; j < image.cols; j++) {
-			if(image.at<uchar>(i, j) == 255)
+	for(int i = 0; i < contImage.rows; i++) {
+		for(int j = 0; j < contImage.cols; j++) {
+			if(contImage.at<uchar>(i, j) == 255)
 				allPoints.push_back(Point(i, j));
 		}
 	}
@@ -286,7 +294,7 @@ int mpiMain(int argc, char** argv) {
 
 		// Color the clusters
 		Mat final;
-		cvtColor(image, final, CV_GRAY2RGB);
+		cvtColor(contImage, final, CV_GRAY2RGB);
 		map<int, Vec3b> clusterColors;
 		for(int i = 0; i < totalNumPoints; i++) {
 			int clusterIndex = allClusterIndexes[i];
@@ -301,7 +309,7 @@ int mpiMain(int argc, char** argv) {
 
 		if(displayImages) {
 			namedWindow("final", CV_WINDOW_KEEPRATIO);
-			imshow("final", image);
+			imshow("final", contImage);
 			waitKey(0);
 			imshow("final", final);
 			waitKey(0);
