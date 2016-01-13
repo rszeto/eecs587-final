@@ -23,12 +23,9 @@ typedef struct distStruct {
 	float dist;
 } distStruct;
 
-class DistStructComparator {
-	public:
-		bool operator() (distStruct a, distStruct b) {
-			return a.dist > b.dist;
-		}
-};
+bool distSorter(distStruct a, distStruct b) {
+	return a.dist < b.dist;
+}
 
 int mpiMain(int argc, char** argv) {
 	bool displayImages;
@@ -169,11 +166,11 @@ int mpiMain(int argc, char** argv) {
 		MPI_Isend(localPointsArr, 2*numLocalPoints, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &sendReqs[i]);
 	}
 	
-	// Populate distances PQ
-	priority_queue<distStruct, vector<distStruct>, DistStructComparator> dists;
+	// Populate distances vector
+	vector<distStruct> dists;
 	for(int i = 0; i < numLocalPoints; i++) {
 		for(int j = i+1; j < numLocalPoints; j++) {
-			dists.push({i, j, norm(localPoints[i]-localPoints[j])});
+			dists.push_back({i, j, norm(localPoints[i]-localPoints[j])});
 		}
 	}
 
@@ -190,10 +187,15 @@ int mpiMain(int argc, char** argv) {
 		for(int i = 0; i < numLocalPoints; i++) {
 			for(int j = 0; j < otherPoints.size(); j++) {
 				int whateverJ = j + cumNumLocalPointsArr[otherRank] - cumNumLocalPointsArr[rank];
-				dists.push({i, whateverJ, norm(localPoints[i]-otherPoints[j])});
+				dists.push_back({i, whateverJ, norm(localPoints[i]-otherPoints[j])});
 			}
 		}
 	}
+	
+	// Sort distances
+	sort(dists.begin(), dists.end(), distSorter);
+	// Keep track of which one distance is minimum
+	int minDistIndex = 0;
 
 	if(verbose) {
 		MPI_Barrier(MPI_COMM_WORLD);
@@ -222,7 +224,7 @@ int mpiMain(int argc, char** argv) {
 	double iterTime = MPI_Wtime();
 	for(int loopVar = 0; loopVar < totalNumPoints*(totalNumPoints-1)/2; loopVar++) {
 
-		if(verbose && rank == 0 && loopVar % 2000 == 0) {
+		if(verbose && rank == 0 && loopVar % 200 == 0) {
 			double curTime = MPI_Wtime();
 			cout << "Iteration " << loopVar << "/" << totalNumPoints*(totalNumPoints-1)/2
 					<< " (" << curTime-iterTime << "s)" << endl;
@@ -232,8 +234,8 @@ int mpiMain(int argc, char** argv) {
 		// Find the smallest distance
 		float minDistF = numeric_limits<float>::max();
 		Point minLoc;
-		if(!dists.empty()) {
-			distStruct minDistStruct = dists.top();
+		if(minDistIndex < dists.size()) {
+			distStruct minDistStruct = dists[minDistIndex];
 			minDistF = minDistStruct.dist;
 			minLoc = Point(minDistStruct.i, minDistStruct.j);
 		}
@@ -252,7 +254,7 @@ int mpiMain(int argc, char** argv) {
 
 		// If the global min was found on this proc, remove it
 		if(rank == out.rank) {
-			dists.pop();
+			minDistIndex++;
 		}
 		
 		// Get global position of minimum
